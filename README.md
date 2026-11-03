@@ -66,8 +66,8 @@ The empty `.nojekyll` file tells GitHub Pages to serve the files exactly as they
 
 > **Install it to your Home Screen before you log anything.** An app added to the Home Screen
 > keeps its data separately from Safari, so anything you log in a Safari tab won't appear in the
-> installed app (and vice versa). Home Screen apps are also protected from Safari's automatic
-> clean-up of website data.
+> installed app (and vice versa). The installed app also isn't affected by Safari clearing data
+> for websites you haven't visited recently, though deleting the app deletes its data, so back up.
 
 1. Open the app's URL in **Safari** (not another browser).
 2. Tap the **Share** button (the square with an arrow).
