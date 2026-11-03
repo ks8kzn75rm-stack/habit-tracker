@@ -465,7 +465,10 @@ export function TodayView({ dayKey = null } = {}) {
       if (streak.current >= 2) parts.push(metaItem('flame', `${streak.current} weeks`, 'meta-streak'));
       return parts;
     }
-    if (streak.current >= 2) parts.push(metaItem('flame', `${streak.current} days`, 'meta-streak'));
+    if (streak.current >= 2) {
+      const label = habit.schedule.type === 'days' ? `${streak.current} in a row` : `${streak.current} days`;
+      parts.push(metaItem('flame', label, 'meta-streak'));
+    }
     if (streak.graceUsedThisWeek && streak.current >= 1) parts.push(metaItem('shield', 'grace day used', 'meta-grace'));
     if (habit.windowCountdown) parts.push(metaItem('clock', `By ${formatTime(store.settings.windowEnd)}`));
     if (habit.lightsOut) parts.push(metaItem('moon', `Target ${formatTime(store.settings.lightsOut)}`));

@@ -120,7 +120,8 @@ npm run bump         # bump the version (patch); also: npm run bump -- minor | 1
 
 Unit tests cover the day boundary (including DST changes in several time zones), streaks and
 grace days (including randomised checks against a brute-force version), scheduling, points,
-levels, the morning window, backup validation and the backup reminder. They also check that the
+levels, the morning window, backup validation, the backup reminder, and that the encouraging
+messages suit the time of day and never use negative words. They also check that the
 service worker caches exactly the app's files, the manifest and icons are valid, and nothing
 references an external URL.
 

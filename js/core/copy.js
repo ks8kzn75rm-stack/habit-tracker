@@ -60,6 +60,14 @@ const MESSAGES = {
     'Every habit done. That’s a full house!',
     'Clean sweep today. Take a moment to enjoy it.',
   ],
+  eveningGood: [
+    'A good day’s work. Time to wind down.',
+    'Most of the day ticked off. Rest well tonight.',
+  ],
+  eveningSome: [
+    'Every habit you did today counts. Rest well.',
+    'Some good things happened today. Tomorrow’s a fresh page.',
+  ],
   past: [
     'Catching up counts. Log what happened, whatever it was.',
     'Filling in the gaps keeps your streaks honest and alive.',
@@ -67,16 +75,17 @@ const MESSAGES = {
   restDay: ['Nothing scheduled today. Enjoy the breathing room.'],
 };
 
-/** The line under today's score. */
+/** The line under today's score. Always encouraging, and right for the time of day. */
 export function heroMessage({ stats, isToday, phase, seed }) {
   if (!isToday) return pick(MESSAGES.past, seed);
   if (stats.dueCount === 0) return pick(MESSAGES.restDay, seed);
   if (stats.perfect) return pick(MESSAGES.allDone, seed);
-  if (stats.morningWin) return pick(MESSAGES.morningWin, seed);
   if (stats.doneCount === 0) {
     const list = { morning: MESSAGES.freshMorning, daytime: MESSAGES.freshDay, evening: MESSAGES.freshEvening }[phase];
     return pick(list, seed);
   }
+  if (phase === 'evening') return pick(stats.ratio >= 0.5 ? MESSAGES.eveningGood : MESSAGES.eveningSome, seed);
+  if (stats.morningWin) return pick(MESSAGES.morningWin, seed);
   if (stats.ratio >= 0.5) return pick(MESSAGES.overHalf, seed);
   return pick(MESSAGES.started, seed);
 }

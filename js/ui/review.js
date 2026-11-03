@@ -133,7 +133,7 @@ export function ReviewView({ weekStart: requested = null } = {}) {
           h(
             'li',
             { class: 'focus-item', 'data-section': sectionOf(item.habit) },
-            h('div', { class: 'rate-top' }, h('span', { class: 'rate-name' }, item.habit.name), h('span', { class: 'rate-count' }, `${item.done}/${item.due} days`)),
+            h('div', { class: 'rate-top' }, h('span', { class: 'rate-name' }, item.habit.name), h('span', { class: 'rate-count' }, `${item.done} of ${item.due} days`)),
             h('p', { class: 'focus-tip' }, icon('bulb', { size: 16 }), item.tip),
           ),
         ),
