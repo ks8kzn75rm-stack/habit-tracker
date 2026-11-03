@@ -1,5 +1,5 @@
 /** Backup file format, validation and the gentle backup reminder. */
-import { DAY_MS } from './dates.js';
+import { diffDays } from './dates.js';
 import {
   normalizeDay,
   normalizeHabit,
@@ -58,11 +58,11 @@ export function parseBackup(input) {
     try {
       obj = JSON.parse(input);
     } catch {
-      return { ok: false, error: "That file isn't a valid backup (it couldn't be read as JSON)." };
+      return { ok: false, error: 'That file isn’t a valid backup (it couldn’t be read as JSON).' };
     }
   }
   if (!obj || typeof obj !== 'object' || obj.app !== BACKUP_APP || !obj.data || typeof obj.data !== 'object') {
-    return { ok: false, error: "That file doesn't look like a Daybreak backup." };
+    return { ok: false, error: 'That file doesn’t look like a Daybreak backup.' };
   }
   if (Number(obj.schema) > BACKUP_SCHEMA) {
     return {
@@ -94,14 +94,14 @@ export function parseBackup(input) {
 
 /**
  * Whether to show the "time for a backup?" card.
- * Shown once there's data worth keeping and 7+ days have passed since the last
- * export (or since the app was first set up). "Not now" hides it for the day.
+ * Shown once there's data worth keeping and 7+ calendar days have passed since
+ * the last export (or since the first day of use). "Not now" hides it for the day.
  */
-export function backupReminder({ now, lastExportAt, installedAt, snoozedDay, todayKey, hasData }) {
+export function backupReminder({ todayKey, lastExportDay, firstDay, snoozedDay, hasData }) {
   if (!hasData || snoozedDay === todayKey) return null;
-  const since = lastExportAt || installedAt;
+  const since = lastExportDay || firstDay;
   if (!since) return null;
-  const days = Math.floor((now - since) / DAY_MS);
+  const days = diffDays(since, todayKey);
   if (days < REMINDER_DAYS) return null;
-  return { days, neverBackedUp: !lastExportAt };
+  return { days, neverBackedUp: !lastExportDay };
 }

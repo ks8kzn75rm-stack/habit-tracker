@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { BACKUP_APP, backupFilename, backupReminder, buildBackup, parseBackup } from '../../js/core/backup.js';
-import { DAY_MS } from '../../js/core/dates.js';
 import { DEFAULT_SETTINGS, createDefaultHabits } from '../../js/core/defaults.js';
 import { normalizeHabit, normalizeSchedule, normalizeSettings } from '../../js/core/model.js';
 
@@ -114,22 +113,21 @@ describe('backup files', () => {
 });
 
 describe('backup reminder', () => {
-  const now = Date.parse('2026-11-20T09:00:00Z');
-  const base = { now, todayKey: '2026-11-20', hasData: true, snoozedDay: null };
+  const base = { todayKey: '2026-11-20', hasData: true, snoozedDay: null, firstDay: '2026-11-01' };
 
-  test('appears after 7 days without a backup', () => {
-    assert.equal(backupReminder({ ...base, lastExportAt: now - 6 * DAY_MS }), null);
-    assert.deepEqual(backupReminder({ ...base, lastExportAt: now - 7 * DAY_MS }), { days: 7, neverBackedUp: false });
+  test('appears after 7 calendar days without a backup', () => {
+    assert.equal(backupReminder({ ...base, lastExportDay: '2026-11-14' }), null);
+    assert.deepEqual(backupReminder({ ...base, lastExportDay: '2026-11-13' }), { days: 7, neverBackedUp: false });
   });
 
-  test('counts from setup when you have never backed up', () => {
-    assert.equal(backupReminder({ ...base, lastExportAt: null, installedAt: now - 3 * DAY_MS }), null);
-    assert.deepEqual(backupReminder({ ...base, lastExportAt: null, installedAt: now - 9 * DAY_MS }), { days: 9, neverBackedUp: true });
+  test('counts from the first day when you have never backed up', () => {
+    assert.equal(backupReminder({ ...base, lastExportDay: null, firstDay: '2026-11-17' }), null);
+    assert.deepEqual(backupReminder({ ...base, lastExportDay: null, firstDay: '2026-11-11' }), { days: 9, neverBackedUp: true });
   });
 
   test('stays quiet when there is nothing to lose or it was snoozed today', () => {
-    assert.equal(backupReminder({ ...base, hasData: false, lastExportAt: now - 30 * DAY_MS }), null);
-    assert.equal(backupReminder({ ...base, snoozedDay: '2026-11-20', lastExportAt: now - 30 * DAY_MS }), null);
-    assert.ok(backupReminder({ ...base, snoozedDay: '2026-11-19', lastExportAt: now - 30 * DAY_MS }));
+    assert.equal(backupReminder({ ...base, hasData: false, lastExportDay: '2026-10-01' }), null);
+    assert.equal(backupReminder({ ...base, snoozedDay: '2026-11-20', lastExportDay: '2026-10-01' }), null);
+    assert.ok(backupReminder({ ...base, snoozedDay: '2026-11-19', lastExportDay: '2026-10-01' }));
   });
 });

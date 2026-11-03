@@ -25,11 +25,12 @@ export function completionsOn(habits, record, key) {
 }
 
 /**
- * Streak info for one habit.
+ * Streak info for one habit. `best` (all-time) is skipped unless asked for,
+ * since it means scanning the whole history.
  * Day habits: { unit: 'day', current, best, graceUsedThisWeek, todayDone }
  * Weekly-target habits: { unit: 'week', current, best, graceUsed, currentMet }
  */
-export function habitStreak(habit, ctx) {
+export function habitStreak(habit, ctx, { withBest = true } = {}) {
   const { days, today, settings } = ctx;
   const weekStartsOn = settings.weekStartsOn ?? 1;
   const startKey = habit.createdDay || firstDayOf(ctx);
@@ -42,11 +43,11 @@ export function habitStreak(habit, ctx) {
     const currentWeek = startOfWeek(endKey, weekStartsOn);
     const firstWeek = startOfWeek(startKey, weekStartsOn);
     const current = weeklyStreak({ currentWeek, firstWeek, isMet });
-    const best = bestWeeklyStreak({ firstWeek, lastWeek: currentWeek, isMet });
+    const best = withBest ? bestWeeklyStreak({ firstWeek, lastWeek: currentWeek, isMet }) : 0;
     return {
       unit: 'week',
       current: current.count,
-      best: Math.max(best, current.count),
+      best: withBest ? Math.max(best, current.count) : null,
       graceUsed: current.graceWeeks > 0,
       currentMet: current.currentMet,
     };
@@ -54,27 +55,27 @@ export function habitStreak(habit, ctx) {
 
   const isDue = (key) => isDueOn(habit, key);
   const current = currentStreak({ today: endKey, startKey, isDue, isDone, weekStartsOn });
-  const best = bestStreak({ startKey, endKey, isDue, isDone, weekStartsOn });
+  const best = withBest ? bestStreak({ startKey, endKey, isDue, isDone, weekStartsOn }) : 0;
   return {
     unit: 'day',
     current: current.count,
-    best: Math.max(best, current.count),
+    best: withBest ? Math.max(best, current.count) : null,
     graceUsedThisWeek: current.graceUsedThisWeek,
     todayDone: current.todayDone,
   };
 }
 
 /** Days in a row with at least one habit done (1 grace day per week). */
-export function showingUpStreak(ctx) {
+export function showingUpStreak(ctx, { withBest = true } = {}) {
   const { habits, days, today, settings } = ctx;
   const startKey = firstDayOf(ctx);
   const isDone = (key) => completionsOn(habits, days.get(key), key) > 0;
   const opts = { startKey, isDue: () => true, isDone, weekStartsOn: settings.weekStartsOn ?? 1 };
   const current = currentStreak({ ...opts, today });
-  const best = bestStreak({ ...opts, endKey: today });
+  const best = withBest ? bestStreak({ ...opts, endKey: today }) : 0;
   return {
     current: current.count,
-    best: Math.max(best, current.count),
+    best: withBest ? Math.max(best, current.count) : null,
     graceUsedThisWeek: current.graceUsedThisWeek,
     todayDone: current.todayDone,
   };

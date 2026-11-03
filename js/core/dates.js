@@ -34,15 +34,39 @@ export function isValidKey(key) {
   return dayNumToKey(Math.round(Date.UTC(y, m - 1, d) / DAY_MS)) === key;
 }
 
+// Streak and score calculations convert the same few thousand days over and
+// over, so both directions are cached.
+const CACHE_LIMIT = 20000;
+const dayNumCache = new Map();
+const keyCache = new Map();
+
 /** Days since 1970-01-01 for a key. */
 export function keyToDayNum(key) {
-  const { y, m, d } = parseKey(key);
-  return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
+  let n = dayNumCache.get(key);
+  if (n === undefined) {
+    const { y, m, d } = parseKey(key);
+    n = Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
+    if (dayNumCache.size >= CACHE_LIMIT) dayNumCache.clear();
+    dayNumCache.set(key, n);
+  }
+  return n;
 }
 
 export function dayNumToKey(n) {
-  const dt = new Date(n * DAY_MS);
-  return toKey(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+  let key = keyCache.get(n);
+  if (key === undefined) {
+    const dt = new Date(n * DAY_MS);
+    key = toKey(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+    if (keyCache.size >= CACHE_LIMIT) keyCache.clear();
+    keyCache.set(n, key);
+  }
+  return key;
+}
+
+/** Day number of the first day of the week containing day number `n`. */
+export function weekStartNum(n, weekStartsOn = 1) {
+  const weekday = (((n + 4) % 7) + 7) % 7;
+  return n - ((weekday - weekStartsOn + 7) % 7);
 }
 
 export function addDays(key, n) {

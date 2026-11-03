@@ -38,5 +38,7 @@ describe('morning window', () => {
     assert.equal(formatRemaining(60000), '1m');
     assert.equal(formatRemaining(3600000), '1h');
     assert.equal(formatRemaining(5400000), '1h 30m');
+    assert.equal(formatRemaining(5400000 - 5000), '1h 30m'); // rounds up
+    assert.equal(formatRemaining(90000), '2m');
   });
 });

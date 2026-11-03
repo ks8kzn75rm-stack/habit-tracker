@@ -21,10 +21,10 @@ export function morningWindowStatus({ now, dayKey, dayStart, windowEnd, doneAt }
   return { state: 'closed', deadline, remainingMs: 0 };
 }
 
-/** 5_400_000 -> "1h 30m", 600_000 -> "10m", 30_000 -> "under a minute" */
+/** Rounded up, like a countdown: 5_400_000 -> "1h 30m", 30_000 -> "under a minute" */
 export function formatRemaining(ms) {
   if (!(ms >= 60000)) return 'under a minute';
-  const minutes = Math.floor(ms / 60000);
+  const minutes = Math.ceil(ms / 60000);
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (!h) return `${m}m`;

@@ -14,7 +14,7 @@
  *    once met and never breaks the streak while it's in progress.
  *  - A single missed week is forgiven; two missed weeks in a row end it.
  */
-import { addDays, dayNumToKey, keyToDayNum, startOfWeek } from './dates.js';
+import { addDays, dayNumToKey, keyToDayNum, weekStartNum } from './dates.js';
 
 /**
  * @param {object} o
@@ -34,26 +34,31 @@ export function currentStreak({ today, startKey, isDue, isDone, weekStartsOn = 1
     result.todayDone = true;
   }
 
+  const start = keyToDayNum(startKey);
+  const todayNum = keyToDayNum(today);
   const graceByWeek = new Map();
   // A forgiven miss only matters if the streak carries on past it. Misses older
   // than the start of the streak are held here and dropped at the end.
   const pending = [];
-  for (let key = addDays(today, -1); key >= startKey; key = addDays(key, -1)) {
+  for (let n = todayNum - 1; n >= start; n--) {
+    const key = dayNumToKey(n);
     if (!isDue(key)) continue;
     if (isDone(key)) {
       result.count++;
-      result.graceDays.push(...pending);
-      pending.length = 0;
+      if (pending.length) {
+        result.graceDays.push(...pending);
+        pending.length = 0;
+      }
       continue;
     }
-    const week = startOfWeek(key, weekStartsOn);
+    const week = weekStartNum(n, weekStartsOn);
     const used = graceByWeek.get(week) || 0;
     if (used >= graceDaysPerWeek) break;
     graceByWeek.set(week, used + 1);
     pending.push(key);
   }
-  const thisWeek = startOfWeek(today, weekStartsOn);
-  result.graceUsedThisWeek = result.graceDays.some((key) => startOfWeek(key, weekStartsOn) === thisWeek);
+  const thisWeek = weekStartNum(todayNum, weekStartsOn);
+  result.graceUsedThisWeek = result.graceDays.some((key) => weekStartNum(keyToDayNum(key), weekStartsOn) === thisWeek);
   return result;
 }
 
@@ -70,7 +75,8 @@ export function bestStreak({ startKey, endKey, isDue, isDone, weekStartsOn = 1, 
   if (!startKey || !endKey || endKey < startKey) return 0;
   const start = keyToDayNum(startKey);
   const end = keyToDayNum(endKey);
-  const doneUpTo = new Map([[start - 1, 0]]);
+  // doneUpTo[n - start + 1] = completed due days from start to day n
+  const doneUpTo = new Int32Array(end - start + 2);
   let done = 0;
   let best = 0;
   let breakAt = start - 1;
@@ -78,22 +84,22 @@ export function bestStreak({ startKey, endKey, isDue, isDone, weekStartsOn = 1, 
   let misses = [];
 
   for (let n = start; n <= end; n++) {
-    const key = dayNumToKey(n);
-    const wk = startOfWeek(key, weekStartsOn);
+    const wk = weekStartNum(n, weekStartsOn);
     if (wk !== week) {
       week = wk;
       misses = [];
     }
+    const key = dayNumToKey(n);
     if (isDue(key)) {
       if (isDone(key)) {
         done++;
-        best = Math.max(best, done - doneUpTo.get(breakAt));
+        best = Math.max(best, done - doneUpTo[breakAt - start + 1]);
       } else {
         misses.push(n);
         if (misses.length > graceDaysPerWeek) breakAt = misses[misses.length - 1 - graceDaysPerWeek];
       }
     }
-    doneUpTo.set(n, done);
+    doneUpTo[n - start + 1] = done;
   }
   return best;
 }
