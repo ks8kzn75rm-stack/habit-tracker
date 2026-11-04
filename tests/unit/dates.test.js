@@ -38,6 +38,7 @@ describe('day keys', () => {
     assert.equal(isValidKey('2026-1-1'), false);
     assert.equal(isValidKey('not a date'), false);
     assert.equal(isValidKey(20261103), false);
+    assert.equal(isValidKey('1955-07-21'), true); // birth dates before 1970 are fine
   });
 
   test('adds days across months, years and leap days', () => {

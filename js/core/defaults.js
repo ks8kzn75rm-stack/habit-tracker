@@ -7,13 +7,25 @@ export const DEFAULT_SETTINGS = Object.freeze({
   weekStartsOn: 1, // Monday
   morningWinBonus: 25,
   haptics: true,
+  ritualEnabled: true, // offer the Begin ritual on the first open each day
+  breathSeconds: 30,
+  focusMinutes: 25, // usual focus session
+  deepWorkMinutes: 90, // a session this long ticks the deep-work habit
+  lifeWeeksEnabled: false,
+  birthDate: null,
+  seasonEnabled: false,
+  seasonEnd: null,
+  seasonLabel: '',
 });
 
 const MON = 1;
 const WED = 3;
 const FRI = 5;
 
+const RITUAL_SEED = { key: 'ritual', name: 'Began my day with intention', group: 'morning', points: 15, ritual: true };
+
 const STARTER_HABITS = [
+  RITUAL_SEED,
   { key: 'water', name: 'Glass of water on waking', group: 'morning', points: 10 },
   { key: 'sleep', name: 'Slept 7–8 hours', group: 'morning', points: 10 },
   { key: 'sunlight', name: 'Morning sunlight', group: 'morning', points: 10 },
@@ -26,7 +38,7 @@ const STARTER_HABITS = [
     schedule: { type: 'days', days: [MON, WED, FRI] },
     windowCountdown: true,
   },
-  { key: 'deep-work', name: 'Deep-work block on content (90 min)', group: 'daytime', points: 20 },
+  { key: 'deep-work', name: 'Deep-work block on content (90 min)', group: 'daytime', points: 20, focusAuto: true },
   { key: 'squats', name: 'Daily squats', group: 'daytime', points: 10 },
   { key: 'vitamin-d', name: 'Vitamin D', group: 'daytime', points: 5 },
   { key: 'learn', name: 'Learn a new skill (15+ min)', group: 'daytime', points: 10 },
@@ -44,21 +56,32 @@ const STARTER_HABITS = [
   },
 ];
 
-export function createDefaultHabits(dayKey) {
-  return STARTER_HABITS.map((seed, index) => ({
+function habitFromSeed(seed, order, dayKey) {
+  return {
     id: `d-${seed.key}`,
     name: seed.name,
     group: seed.group,
     schedule: seed.schedule ? structuredClone(seed.schedule) : { type: 'daily' },
     points: seed.points,
-    order: index,
+    order,
     createdDay: dayKey,
     archivedDay: null,
     windowCountdown: Boolean(seed.windowCountdown),
     lightsOut: Boolean(seed.lightsOut),
+    ritual: Boolean(seed.ritual),
+    focusAuto: Boolean(seed.focusAuto),
     tip: seed.key,
     projectId: null,
-  }));
+  };
+}
+
+export function createDefaultHabits(dayKey) {
+  return STARTER_HABITS.map((seed, index) => habitFromSeed(seed, index, dayKey));
+}
+
+/** The habit the Begin ritual ticks (added to existing habits by the migration). */
+export function createRitualHabit(dayKey, order = 0) {
+  return habitFromSeed(RITUAL_SEED, order, dayKey);
 }
 
 export const EXAMPLE_PROJECT = Object.freeze({

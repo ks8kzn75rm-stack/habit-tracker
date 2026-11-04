@@ -15,6 +15,7 @@ const state = () => ({
     {
       id: 'p1',
       name: 'Office reset',
+      status: 'active',
       steps: [{ id: 's1', text: 'Clear the desk', done: true }],
       maintenance: { name: '10-min desk tidy', group: 'evening', schedule: { type: 'daily' }, points: 10 },
       createdAt: 1762000000000,
@@ -51,14 +52,44 @@ describe('backup files', () => {
     assert.equal(parsed.data.meta.firstDay, '2026-10-01');
     assert.deepEqual(parsed.data.meta.badges, { 'first-step': '2026-10-01' });
     assert.equal(parsed.exportedAt, Date.parse('2026-11-03T12:00:00Z'));
-    assert.deepEqual(parsed.summary, { habits: 15, days: 2, projects: 1 });
+    assert.deepEqual(parsed.summary, { habits: 16, days: 2, projects: 1, sessions: 0 });
+  });
+
+  test('version 2 round-trips the ritual, reflections, sessions, cards, foundations and inbox', () => {
+    const s = state();
+    const extras = {
+      journal: new Map([
+        ['2026-11-03', {
+          date: '2026-11-03',
+          ritual: { arrival: 'stuck', breathed: true, cardId: 'res-01', line: 'A joy of mine', mainThing: { projectId: 'p1', text: 'Draft the intro' }, lettingGo: 'Perfect wording', plan: { startAt: 570, minutes: 50 }, completedAt: 1762160000000, skippedAt: null },
+          reflection: { showedUp: 'yes', joy: 'Coffee in the sun', lettingGo: 'Email', tomorrowWord: 'Steady', savedAt: 1762200000000 },
+        }],
+      ]),
+      sessions: [
+        { id: 'f1', kind: 'focus', day: '2026-11-03', startedAt: 1762160000000, endedAt: 1762163000000, minutes: 50, plannedMinutes: 50, projectId: 'p1', intent: 'Draft the intro', rescue: null, shipped: true, shippedNote: 'Sent the draft' },
+        { id: 'f2', kind: 'focus', day: '2026-11-03', startedAt: 1762170000000, endedAt: 1762170300000, minutes: 5, plannedMinutes: 5, projectId: null, intent: '', rescue: 'perfectionism', shipped: false, shippedNote: '' },
+      ],
+      cardRecords: new Map([['res-02', { id: 'res-02', custom: false, theme: null, text: '', credit: '', favourite: true, hidden: false }]]),
+      foundations: { why: 'Because making things\nmakes me feel alive.', letter: 'Dear me,\n\nYou did it.', joys: ['Walks', 'Music'], opportunity: 'A season to build.', updatedAt: 1762000000000 },
+      inbox: [{ id: 'i1', text: 'Make the garden glow at night', createdAt: 1762000000000 }],
+    };
+    const backup = buildBackup({ ...s, ...extras }, { appVersion: '1.1.0' });
+    assert.equal(backup.schema, 2);
+    const parsed = parseBackup(JSON.stringify(backup));
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.data.journal, [...extras.journal.values()]);
+    assert.deepEqual(parsed.data.sessions, extras.sessions);
+    assert.deepEqual(parsed.data.cardRecords, [...extras.cardRecords.values()]);
+    assert.deepEqual(parsed.data.foundations, extras.foundations);
+    assert.deepEqual(parsed.data.inbox, extras.inbox);
+    assert.equal(parsed.summary.sessions, 2);
   });
 
   test('rejects files that are not backups', () => {
     assert.equal(parseBackup('{ nope').ok, false);
     assert.equal(parseBackup('[]').ok, false);
     assert.equal(parseBackup(JSON.stringify({ app: 'something-else', data: {} })).ok, false);
-    const newer = parseBackup(JSON.stringify({ app: BACKUP_APP, schema: 99, data: {} }));
+    const newer = parseBackup(JSON.stringify({ app: BACKUP_APP, schema: 3, data: {} }));
     assert.equal(newer.ok, false);
     assert.match(newer.error, /newer version/);
   });

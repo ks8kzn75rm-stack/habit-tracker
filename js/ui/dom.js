@@ -36,6 +36,15 @@ export function append(el, children) {
   return el;
 }
 
+/**
+ * Replace an element's children, with the same rules as h(): nulls are
+ * skipped and arrays flattened. (replaceChildren(null) would print "null".)
+ */
+export function fill(el, ...children) {
+  el.replaceChildren();
+  return append(el, children);
+}
+
 export function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
   for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));

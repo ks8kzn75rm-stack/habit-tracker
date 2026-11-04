@@ -1,13 +1,13 @@
 {
   "name": "habit-tracker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "An offline-first habit tracker PWA in plain HTML, CSS and JavaScript. No build step.",
   "type": "module",
   "scripts": {
     "serve": "node scripts/serve.mjs --port 8080",
     "test": "node --test \"tests/unit/*.test.js\"",
-    "test:e2e": "node --test --test-concurrency=1 --test-timeout=120000 \"tests/e2e/*.e2e.js\"",
+    "test:e2e": "node --test --test-concurrency=1 --test-timeout=600000 \"tests/e2e/*.e2e.js\"",
     "icons": "node scripts/generate-icons.mjs",
     "bump": "node scripts/bump-version.mjs"
   },

@@ -30,7 +30,7 @@ export function isValidKey(key) {
   const y = Number(match[1]);
   const m = Number(match[2]);
   const d = Number(match[3]);
-  if (y < 1970 || m < 1 || m > 12 || d < 1 || d > 31) return false;
+  if (y < 1900 || m < 1 || m > 12 || d < 1 || d > 31) return false;
   return dayNumToKey(Math.round(Date.UTC(y, m - 1, d) / DAY_MS)) === key;
 }
 

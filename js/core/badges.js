@@ -25,6 +25,9 @@ export const BADGES = [
   { id: 'centurion', emoji: '💯', title: 'Centurion', desc: '100 habits completed', test: (s) => s.completions >= 100 },
   { id: 'level-5', emoji: '⭐', title: 'Rising', desc: 'Reach level 5', test: (s) => s.level >= 5 },
   { id: 'level-10', emoji: '🏆', title: 'Shining', desc: 'Reach level 10', test: (s) => s.level >= 10 },
+  { id: 'began', emoji: '🌄', title: 'Began', desc: 'Complete the Begin ritual', test: (s) => s.rituals >= 1 },
+  { id: 'unstuck', emoji: '🪜', title: 'Unstuck', desc: 'Use “I’m stuck” and start anyway', test: (s) => s.rescues >= 1 },
+  { id: 'shipped', emoji: '🚀', title: 'Shipped it', desc: 'Mark something as shipped or released', test: (s) => s.shipped >= 1 },
 ];
 
 export function badgeStats(ctx) {
@@ -39,6 +42,9 @@ export function badgeStats(ctx) {
     weeklyGoalMet: false,
     comeback: false,
     projectsDone: projects.filter((p) => p.completedDay).length,
+    rituals: [...(ctx.journal?.values() || [])].filter((j) => j.ritual?.completedAt).length,
+    rescues: (ctx.sessions || []).filter((s) => s.rescue && s.minutes >= 1).length,
+    shipped: (ctx.sessions || []).filter((s) => s.shipped).length,
     backedUp: (meta.exportCount || 0) > 0,
     bestShowingUp: showingUpStreak(ctx).best,
     xp: totalPoints(habits, days, settings, projects),

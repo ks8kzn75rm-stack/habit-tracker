@@ -1,25 +1,36 @@
 /** Backup file format, validation and the gentle backup reminder. */
 import { diffDays } from './dates.js';
 import {
+  isCardRecordEmpty,
+  isJournalEmpty,
+  normalizeCardRecord,
   normalizeDay,
+  normalizeFoundations,
   normalizeHabit,
+  normalizeInbox,
+  normalizeJournal,
   normalizeMeta,
   normalizeProject,
+  normalizeSession,
   normalizeSettings,
 } from './model.js';
 
 export const BACKUP_APP = 'daybreak-habit-tracker';
-export const BACKUP_SCHEMA = 1;
+/** 1: habits, days, projects. 2: adds the journal, sessions, cards, foundations, inbox. */
+export const BACKUP_SCHEMA = 2;
 export const REMINDER_DAYS = 7;
 
 export function backupFilename(dayKey) {
   return `daybreak-backup-${dayKey}.json`;
 }
 
-export function buildBackup({ habits, days, projects, settings, meta }, { appVersion = '', now = new Date() } = {}) {
-  const dayList = [...(days instanceof Map ? days.values() : days)].sort((a, b) =>
-    a.date < b.date ? -1 : 1,
-  );
+const values = (collection) => [...(collection instanceof Map ? collection.values() : collection || [])];
+
+export function buildBackup(
+  { habits, days, projects, settings, meta, journal = [], sessions = [], cardRecords = [], foundations = {}, inbox = [] },
+  { appVersion = '', now = new Date() } = {},
+) {
+  const dayList = values(days).sort((a, b) => (a.date < b.date ? -1 : 1));
   return {
     app: BACKUP_APP,
     schema: BACKUP_SCHEMA,
@@ -30,6 +41,11 @@ export function buildBackup({ habits, days, projects, settings, meta }, { appVer
       days: dayList.map((d) => ({ ...d, done: { ...d.done } })),
       projects: projects.map((p) => ({ ...p, steps: p.steps.map((s) => ({ ...s })) })),
       settings: { ...settings },
+      journal: values(journal).map((j) => structuredClone(j)).sort((a, b) => (a.date < b.date ? -1 : 1)),
+      sessions: values(sessions).map((s) => ({ ...s })).sort((a, b) => a.startedAt - b.startedAt),
+      cards: values(cardRecords).map((c) => ({ ...c })),
+      foundations: structuredClone(foundations),
+      inbox: values(inbox).map((i) => ({ ...i })),
       meta: {
         installedAt: meta.installedAt,
         firstDay: meta.firstDay,
@@ -37,6 +53,9 @@ export function buildBackup({ habits, days, projects, settings, meta }, { appVer
         exportCount: meta.exportCount,
         welcomed: meta.welcomed,
         installHintDismissed: meta.installHintDismissed,
+        dataVersion: meta.dataVersion,
+        ritualIntroSeen: meta.ritualIntroSeen,
+        tuneUps: { ...meta.tuneUps },
       },
     },
   };
@@ -77,17 +96,24 @@ export function parseBackup(input) {
   const days = uniqueBy(list(d.days).map(normalizeDay).filter(Boolean), (x) => x.date);
   const projects = uniqueBy(list(d.projects).map(normalizeProject).filter(Boolean), (p) => p.id);
   const settings = normalizeSettings(d.settings);
-  const meta = normalizeMeta({ ...(d.meta || {}), initialized: true });
+  // A version 1 file has no dataVersion: the store migrates it after import.
+  const meta = normalizeMeta({ ...(d.meta || {}), initialized: true, dataVersion: Number(obj.schema) >= 2 ? d.meta?.dataVersion : 1 });
+  const journal = uniqueBy(list(d.journal).map(normalizeJournal).filter((j) => j && !isJournalEmpty(j)), (j) => j.date);
+  const sessions = uniqueBy(list(d.sessions).map(normalizeSession).filter(Boolean), (s) => s.id);
+  const cardRecords = uniqueBy(list(d.cards).map(normalizeCardRecord).filter((c) => c && !isCardRecordEmpty(c)), (c) => c.id);
+  const foundations = normalizeFoundations(d.foundations);
+  const inbox = normalizeInbox(d.inbox);
   const exportedAt = Date.parse(obj.exportedAt) || null;
 
   return {
     ok: true,
-    data: { habits, days, projects, settings, meta },
+    data: { habits, days, projects, settings, meta, journal, sessions, cardRecords, foundations, inbox },
     exportedAt,
     summary: {
       habits: habits.filter((h) => !h.archivedDay).length,
       days: days.filter((x) => Object.keys(x.done).length || x.note).length,
       projects: projects.length,
+      sessions: sessions.filter((s) => s.kind === 'focus').length,
     },
   };
 }

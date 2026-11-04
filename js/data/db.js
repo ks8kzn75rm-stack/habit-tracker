@@ -2,16 +2,19 @@
  * Minimal promise-based IndexedDB wrapper.
  *
  * Object stores: habits (key: id), days (key: date), projects (key: id),
- * kv (key: key) for settings, meta and the pre-import safety copy.
+ * kv (key: key) for settings, meta, foundations, the inbox, the running focus
+ * session and the pre-import safety copy.
+ * Version 2 adds journal (key: date), sessions (key: id) and cards (key: id).
+ * Upgrading only creates the new stores; existing stores are never touched.
  *
  * Safari occasionally drops IndexedDB connections (for example after the app
  * has been suspended for a while); a failed transaction on a dead connection is
  * retried once on a fresh connection.
  */
 const DB_NAME = 'daybreak';
-const DB_VERSION = 1;
-export const STORES = ['habits', 'days', 'projects', 'kv'];
-const KEY_PATHS = { habits: 'id', days: 'date', projects: 'id', kv: 'key' };
+const DB_VERSION = 2;
+export const STORES = ['habits', 'days', 'projects', 'kv', 'journal', 'sessions', 'cards'];
+const KEY_PATHS = { habits: 'id', days: 'date', projects: 'id', kv: 'key', journal: 'date', sessions: 'id', cards: 'id' };
 
 let dbPromise = null;
 
@@ -89,7 +92,7 @@ async function run(storeNames, mode, body, attempt = 0) {
   }
 }
 
-/** Every record in every store: { habits: [], days: [], projects: [], kv: [] } */
+/** Every record in every store: { habits: [], days: [], projects: [], kv: [], journal: [], … } */
 export function loadAll() {
   return run(STORES, 'readonly', (tx) => {
     const out = {};
@@ -130,6 +133,22 @@ export function putMany(store, values) {
 export function remove(store, key) {
   return run([store], 'readwrite', (tx) => {
     tx.objectStore(store).delete(key);
+  });
+}
+
+/**
+ * Several writes across stores in one transaction: all of them happen or none.
+ * ops: [{ store, put: value } | { store, delete: key }]
+ */
+export function batch(ops) {
+  const names = [...new Set(ops.map((op) => op.store))];
+  if (!names.length) return Promise.resolve();
+  return run(names, 'readwrite', (tx) => {
+    for (const op of ops) {
+      const os = tx.objectStore(op.store);
+      if ('delete' in op) os.delete(op.delete);
+      else os.put(op.put);
+    }
   });
 }
 

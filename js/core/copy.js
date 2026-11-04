@@ -91,6 +91,7 @@ export function heroMessage({ stats, isToday, phase, seed }) {
 }
 
 const TIPS = {
+  ritual: 'Let Daybreak be the first app you open in the morning. The ritual takes about a minute.',
   water: 'Leave a full glass by your bed tonight so it’s the first thing you see.',
   sleep: 'Protect the hour before lights out: dim the screens and keep it calm.',
   sunlight: 'Pair it with something you already do, like coffee by a window or a short walk.',

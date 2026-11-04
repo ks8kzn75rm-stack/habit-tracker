@@ -5,6 +5,8 @@ import { store } from '../data/store.js';
 import { navigate } from '../nav.js';
 import { emptyState, pageHeader } from './components.js';
 import { formatDayShort, formatNumber, formatRange, formatWeekday, h, plural } from './dom.js';
+import { evidenceSummaryText, weekEvidence } from './evidence.js';
+import { garden } from './garden.js';
 import { icon } from './icons.js';
 import { badgeGrid, levelCard, openProgress } from './progress.js';
 import { EDIT_WINDOW_DAYS } from './today.js';
@@ -37,8 +39,10 @@ export function ReviewView({ weekStart: requested = null } = {}) {
         'div',
         { class: 'page-body' },
         summary(review),
+        weekStart === currentWeek ? tuneUpCard(weekStart) : null,
         chart(review, today),
         review.hasData ? null : emptyState({ emoji: '🌱', title: 'A fresh week', text: 'Tick a few habits and this page fills up with your progress.' }),
+        evidenceCard(weekStart),
         focusCard(review, weekStart === currentWeek, today),
         strongestCard(review),
         weeklyGoals(review),
@@ -95,6 +99,34 @@ export function ReviewView({ weekStart: requested = null } = {}) {
       h('div', { class: 'card-head' }, h('h2', { class: 'card-title' }, 'Daily points'), best ? h('span', { class: 'card-aside' }, `Best: ${formatWeekday(best.key)}`) : null),
       h('div', { class: 'chart' }, cols),
       h('p', { class: 'chart-legend' }, h('span', { class: 'legend-sun', 'aria-hidden': 'true' }), 'Morning Win', h('span', { class: 'legend-sep' }, '·'), 'Tap a recent day to edit it'),
+    );
+  }
+
+  /** The two-minute weekly tune-up, inside the review. */
+  function tuneUpCard(weekStart) {
+    const done = Boolean(store.meta.tuneUps[weekStart]);
+    return h(
+      'a',
+      { class: `card tuneup-card${done ? ' is-done' : ''}`, href: '#/tune-up' },
+      h('span', { class: 'tuneup-icon' }, icon(done ? 'check' : 'sparkle', { size: 20 })),
+      h(
+        'span',
+        { class: 'tuneup-text' },
+        h('span', { class: 'tuneup-title' }, done ? 'Tuned up this week' : 'Weekly tune-up · 2 min'),
+        h('span', { class: 'tuneup-sub' }, done ? 'Run it again any time you like.' : 'See your proof, sort your cards, adjust one thing.'),
+      ),
+      icon('chevronRight', { size: 18 }),
+    );
+  }
+
+  function evidenceCard(weekStart) {
+    const { sessions, summary: totals } = weekEvidence(weekStart);
+    return h(
+      'section',
+      { class: 'card garden-card' },
+      h('div', { class: 'card-head' }, h('h2', { class: 'card-title' }, 'Proof you show up'), h('a', { class: 'text-btn', href: '#/evidence' }, 'See all')),
+      garden(sessions, { compact: true, label: sessions.length ? `This week’s garden: ${evidenceSummaryText(totals)}` : 'An empty patch of garden, ready for a first seed' }),
+      h('p', { class: 'garden-summary' }, sessions.length ? evidenceSummaryText(totals) : 'No focus sessions this week yet. One Begin plants the first seed.'),
     );
   }
 

@@ -8,7 +8,7 @@ import { weekReview } from '../../js/core/review.js';
 import { habitStreak, morningWinStreak, showingUpStreak } from '../../js/core/stats.js';
 
 const settings = { ...DEFAULT_SETTINGS };
-const MORNING_TUE = ['d-water', 'd-sleep', 'd-sunlight', 'd-phone-free'];
+const MORNING_TUE = ['d-ritual', 'd-water', 'd-sleep', 'd-sunlight', 'd-phone-free'];
 
 function makeDays(entries) {
   return new Map(entries.map(([date, ids, note = '']) => [date, { date, done: Object.fromEntries(ids.map((id) => [id, 1])), note }]));
@@ -27,7 +27,7 @@ const ctx = (days, today, extra = {}) => ({
 describe('weekly review', () => {
   // Week Mon 2 Nov - Sun 8 Nov 2026; today is Thu 5 Nov.
   const days = makeDays([
-    ['2026-11-02', ['d-water', 'd-sleep', 'd-sunlight', 'd-phone-free', 'd-gym', 'd-squats'], 'Great day'],
+    ['2026-11-02', ['d-ritual', 'd-water', 'd-sleep', 'd-sunlight', 'd-phone-free', 'd-gym', 'd-squats'], 'Great day'],
     ['2026-11-03', [...MORNING_TUE, 'd-squats', 'd-strength']],
     ['2026-11-04', ['d-water', 'd-squats']],
     ['2026-11-05', ['d-water']],
@@ -37,8 +37,8 @@ describe('weekly review', () => {
   test('daily scores, totals and Morning Wins', () => {
     assert.equal(review.days.length, 7);
     assert.deepEqual(review.days.map((d) => d.future), [false, false, false, false, true, true, true]);
-    assert.equal(review.days[0].points, 10 + 10 + 10 + 15 + 20 + 10 + 25);
-    assert.equal(review.days[1].points, 10 + 10 + 10 + 15 + 10 + 20 + 25);
+    assert.equal(review.days[0].points, 15 + 10 + 10 + 10 + 15 + 20 + 10 + 25);
+    assert.equal(review.days[1].points, 15 + 10 + 10 + 10 + 15 + 10 + 20 + 25);
     assert.equal(review.morningWins, 2);
     assert.equal(review.total, review.days.reduce((s, d) => s + d.points, 0));
     assert.equal(review.bestDay.key, '2026-11-02');

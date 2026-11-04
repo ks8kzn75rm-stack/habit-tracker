@@ -1,5 +1,7 @@
-/** Settings: habits, your day, rewards, backup, about. */
+/** Settings: habits, Begin & focus, your day, rewards, perspective, inbox, backup, about. */
 import { parseHHMM, toHHMM } from '../core/dates.js';
+import { formatMinutes } from '../core/focus.js';
+import { LIMITS } from '../core/model.js';
 import { SECTIONS, sectionOf } from '../core/schedule.js';
 import { store } from '../data/store.js';
 import { navigate } from '../nav.js';
@@ -8,9 +10,39 @@ import { checkForUpdates, workerStatus } from '../pwa.js';
 import { APP_VERSION } from '../version.js';
 import { exportBackup, importBackup, undoImport } from './backup.js';
 import { describeSchedule, pageHeader, stepper, switchRow } from './components.js';
-import { daysAgoText, formatDayShort, formatTime, h } from './dom.js';
+import { daysAgoText, formatDayShort, formatTime, h, plural } from './dom.js';
 import { SECTION_ICONS, SECTION_TITLES, icon } from './icons.js';
-import { confirm, toast } from './overlay.js';
+import { confirm, sheet, toast } from './overlay.js';
+
+/** Copy text to the clipboard, with an older fallback. Resolves true on success. */
+export async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the older way.
+  }
+  try {
+    const area = h('textarea', { class: 'copy-buffer', readonly: true, 'aria-hidden': 'true' });
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    area.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    area.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+export function inboxText(items, now = new Date()) {
+  const date = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(now);
+  const lines = items.map((item) => `- ${item.text.replace(/\n/g, '\n  ')}`);
+  return `Daybreak ideas (${date})\n\n${lines.join('\n')}\n`;
+}
 
 export function SettingsView() {
   const root = h('div', { class: 'view view-settings' });
@@ -18,11 +50,26 @@ export function SettingsView() {
   let focusAfterRender = null;
   let usage = '';
   let workerVersion = '';
+  let ideaDraft = '';
+  let deferred = false;
 
   function render() {
+    deferred = false;
     root.replaceChildren(
       pageHeader({ title: 'Settings', subtitle: 'Make Daybreak fit your days.' }),
-      h('div', { class: 'page-body' }, habitsCard(), dayCard(), rewardsCard(), backupCard(), aboutCard(), startOverCard()),
+      h(
+        'div',
+        { class: 'page-body' },
+        habitsCard(),
+        beginCard(),
+        dayCard(),
+        rewardsCard(),
+        perspectiveCard(),
+        inboxCard(),
+        backupCard(),
+        aboutCard(),
+        startOverCard(),
+      ),
     );
     if (focusAfterRender) {
       // Keep focus on the arrow that was used, or its partner once it hits the end.
@@ -172,6 +219,207 @@ export function SettingsView() {
     );
   }
 
+  // ----------------------------------------------------------- Begin & focus
+
+  function linkRow(href, iconName, label, hint = '') {
+    return h(
+      'a',
+      { class: 'link-row', href },
+      h('span', { class: 'link-row-icon' }, icon(iconName, { size: 18 })),
+      h('span', { class: 'link-row-text' }, h('span', { class: 'link-row-label' }, label), hint ? h('span', { class: 'link-row-hint' }, hint) : null),
+      icon('chevronRight', { size: 18 }),
+    );
+  }
+
+  function beginCard() {
+    const s = store.settings;
+    return h(
+      'section',
+      { class: 'card settings-card', id: 'begin' },
+      h('h2', { class: 'card-title' }, 'Begin & focus'),
+      switchRow({
+        label: 'Morning Begin ritual',
+        description: 'About a minute, the first time you open Daybreak each day (not after 6pm). Skip it any time.',
+        checked: s.ritualEnabled,
+        onChange: (on) => store.updateSettings({ ritualEnabled: on }),
+      }),
+      settingRow(
+        'Breathing',
+        select('breath-seconds', [30, 45, 60].map((n) => ({ value: n, label: `${n} sec` })), s.breathSeconds, (v) => store.updateSettings({ breathSeconds: Number(v) })),
+        'The optional centring step in the ritual.',
+        'breath-seconds',
+      ),
+      settingRow(
+        'Usual focus session',
+        stepper({ value: s.focusMinutes, min: 5, max: 180, step: 5, label: 'focus minutes', format: (n) => `${n} min`, onChange: (n) => store.updateSettings({ focusMinutes: n }) }),
+        'Where the timer starts.',
+      ),
+      settingRow(
+        'Deep-work session',
+        stepper({ value: s.deepWorkMinutes, min: 15, max: 240, step: 15, label: 'deep-work minutes', format: formatMinutes, onChange: (n) => store.updateSettings({ deepWorkMinutes: n }) }),
+        'A session this long ticks your deep-work habit.',
+      ),
+      h(
+        'div',
+        { class: 'link-rows' },
+        linkRow('#/foundations', 'compass', 'Foundations', 'Your why, letter, joys, this season and your projects'),
+        linkRow('#/cards', 'cards', 'Card library', `${plural(store.cards().length, 'card')} · favourite, hide, edit or write your own`),
+        linkRow('#/evidence', 'sprout', 'Proof you show up', 'Every focus session, and everything you’ve shipped'),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------- perspective
+
+  function dateInput(id, value, { min = null, max = null, onChange }) {
+    return h('input', {
+      class: 'input input-date',
+      id,
+      type: 'date',
+      value: value || '',
+      min,
+      max,
+      onchange: (e) => onChange(e.target.value || null),
+    });
+  }
+
+  function perspectiveCard() {
+    const s = store.settings;
+    const today = store.todayKey();
+    let label = s.seasonLabel;
+    const labelInput = h('input', {
+      class: 'input input-short',
+      id: 'season-label',
+      type: 'text',
+      value: label,
+      placeholder: 'This season',
+      maxlength: String(LIMITS.seasonLabel),
+      autocomplete: 'off',
+      enterkeyhint: 'done',
+      oninput: (e) => {
+        label = e.target.value;
+      },
+      onchange: () => store.updateSettings({ seasonLabel: label }),
+    });
+    labelInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        labelInput.blur();
+      }
+    });
+    return h(
+      'section',
+      { class: 'card settings-card', id: 'perspective' },
+      h('h2', { class: 'card-title' }, 'Perspective'),
+      h('p', { class: 'card-text' }, 'Two optional views of time, framed as appreciation rather than pressure. Both stay off until you turn them on.'),
+      switchRow({
+        label: 'Life in weeks',
+        description: 'A grid of a long life in weeks, with this one glowing.',
+        checked: s.lifeWeeksEnabled,
+        onChange: (on) => store.updateSettings({ lifeWeeksEnabled: on }),
+      }),
+      s.lifeWeeksEnabled
+        ? settingRow('Birth date', dateInput('birth-date', s.birthDate, { min: '1900-01-01', max: today, onChange: (v) => store.updateSettings({ birthDate: v }) }), 'Stays on this device.', 'birth-date')
+        : null,
+      switchRow({
+        label: 'This season',
+        description: 'Choose when this chapter ends and see how many weeks it has to make count.',
+        checked: s.seasonEnabled,
+        onChange: (on) => store.updateSettings({ seasonEnabled: on }),
+      }),
+      s.seasonEnabled
+        ? [
+            settingRow('Season ends', dateInput('season-end', s.seasonEnd, { min: today, onChange: (v) => store.updateSettings({ seasonEnd: v }) }), '', 'season-end'),
+            settingRow('Name it', labelInput, 'Optional, e.g. “Writing season”.', 'season-label'),
+          ]
+        : null,
+      s.lifeWeeksEnabled || s.seasonEnabled ? h('div', { class: 'link-rows' }, linkRow('#/perspective', 'grid', 'Open Perspective')) : null,
+    );
+  }
+
+  // ------------------------------------------------------------------ inbox
+
+  function inboxCard() {
+    const items = store.inbox;
+    const area = h('textarea', {
+      class: 'input textarea',
+      id: 'inbox-new',
+      rows: '3',
+      maxlength: String(LIMITS.inbox),
+      placeholder: 'An idea, a wish, something that bugged you…',
+      'aria-label': 'New idea',
+      oninput: (e) => {
+        ideaDraft = e.target.value;
+      },
+    });
+    area.value = ideaDraft;
+    const add = () => {
+      if (!ideaDraft.trim()) {
+        area.focus();
+        return;
+      }
+      const text = ideaDraft;
+      ideaDraft = '';
+      area.value = '';
+      store.addIdea(text);
+      toast('Saved to your inbox', { emoji: '💡' });
+    };
+    const copyAll = async () => {
+      const text = inboxText(items);
+      if (await copyText(text)) {
+        toast(`Copied ${plural(items.length, 'idea')}`, { emoji: '📋' });
+        return;
+      }
+      // Couldn't reach the clipboard: show the text so it can be copied by hand.
+      const box = h('textarea', { class: 'input textarea copy-box', rows: '10', readonly: true, 'aria-label': 'Your ideas' });
+      box.value = text;
+      sheet({ title: 'Your ideas', content: [h('p', { class: 'card-text' }, 'Select all, then copy.'), box] });
+      requestAnimationFrame(() => box.select());
+    };
+    const clearAll = async () => {
+      const ok = await confirm({ title: 'Clear the inbox?', message: `${plural(items.length, 'idea')} will be deleted. Copy them first if you want to keep them.`, confirmLabel: 'Clear', danger: true });
+      if (ok) for (const item of items) store.removeIdea(item.id);
+    };
+    return h(
+      'section',
+      { class: 'card settings-card', id: 'inbox' },
+      h('div', { class: 'card-head' }, h('h2', { class: 'card-title' }, 'Improvement inbox'), items.length ? h('span', { class: 'card-aside' }, plural(items.length, 'idea')) : null),
+      h('p', { class: 'card-text' }, 'Notice something that could make Daybreak better for you? Drop it here, then copy them all out whenever you like.'),
+      area,
+      h('div', { class: 'button-row' }, h('button', { class: 'btn', type: 'button', onclick: add }, icon('plus', { size: 18 }), 'Add idea')),
+      items.length
+        ? h(
+            'ul',
+            { class: 'inbox-list' },
+            [...items].reverse().map((item) =>
+              h(
+                'li',
+                { class: 'inbox-item' },
+                h('span', { class: 'inbox-text' }, item.text),
+                h('button', {
+                  class: 'icon-btn',
+                  type: 'button',
+                  'aria-label': 'Delete this idea',
+                  onclick: () => {
+                    store.removeIdea(item.id);
+                    toast('Idea deleted', { action: { label: 'Undo', run: () => store.restoreIdea(item) } });
+                  },
+                }, icon('x', { size: 18 })),
+              ),
+            ),
+          )
+        : null,
+      items.length
+        ? h(
+            'div',
+            { class: 'button-row' },
+            h('button', { class: 'btn btn-primary', type: 'button', onclick: copyAll }, icon('copy', { size: 18 }), 'Copy all'),
+            h('button', { class: 'btn btn-danger-text', type: 'button', onclick: clearAll }, 'Clear all'),
+          )
+        : null,
+    );
+  }
+
   // ------------------------------------------------------------------ backup
 
   function backupCard() {
@@ -248,7 +496,7 @@ export function SettingsView() {
         onclick: async () => {
           const ok = await confirm({
             title: 'Erase all data?',
-            message: 'All habits, history, notes and projects on this device will be deleted. If you might want them later, back up first.',
+            message: 'All habits, history, notes, projects, foundations, focus sessions and cards on this device will be deleted. If you might want them later, back up first.',
             confirmLabel: 'Erase everything',
             danger: true,
           });
@@ -263,29 +511,46 @@ export function SettingsView() {
 
   // --------------------------------------------------------------- lifecycle
 
-  const onChange = () => render();
-  store.addEventListener('change', onChange);
-  store.addEventListener('storage', onChange);
+  // Don't rebuild the page under a field that's being edited (it would close
+  // an open date picker or drop a half-typed idea); catch up once it's left.
+  const isEditing = () => {
+    const el = document.activeElement;
+    return Boolean(el && root.contains(el) && el.matches('input:not([type=checkbox]), textarea, select'));
+  };
+  const refresh = () => {
+    if (isEditing()) deferred = true;
+    else render();
+  };
+  // The short wait lets a tap that caused the blur (say, on a switch) land first.
+  const onFocusOut = () => {
+    if (!deferred) return;
+    setTimeout(() => {
+      if (deferred && !isEditing()) render();
+    }, 250);
+  };
+  root.addEventListener('focusout', onFocusOut);
+  store.addEventListener('change', refresh);
+  store.addEventListener('storage', refresh);
   render();
 
   navigator.storage?.estimate?.().then((e) => {
     if (e?.usage) {
       usage = `Using ${(e.usage / 1024).toFixed(0)} KB.`;
-      render();
+      refresh();
     }
   }).catch(() => {});
   workerStatus().then((s) => {
     if (s?.version) {
       workerVersion = s.version;
-      render();
+      refresh();
     }
   });
 
   return {
     el: root,
     destroy() {
-      store.removeEventListener('change', onChange);
-      store.removeEventListener('storage', onChange);
+      store.removeEventListener('change', refresh);
+      store.removeEventListener('storage', refresh);
     },
   };
 }

@@ -1,4 +1,5 @@
 /** Add or edit a habit. */
+import { formatMinutes } from '../core/focus.js';
 import { LIMITS } from '../core/model.js';
 import { store } from '../data/store.js';
 import { navigate } from '../nav.js';
@@ -22,7 +23,7 @@ export function HabitEditorView({ id = null } = {}) {
 
   const draft = existing
     ? structuredClone(existing)
-    : { name: '', group: 'morning', schedule: { type: 'daily' }, points: 10, windowCountdown: false, lightsOut: false };
+    : { name: '', group: 'morning', schedule: { type: 'daily' }, points: 10, windowCountdown: false, lightsOut: false, focusAuto: false };
   const error = h('p', { class: 'form-error', role: 'alert' });
   const nameInput = textInput({
     id: 'habit-name',
@@ -58,6 +59,7 @@ export function HabitEditorView({ id = null } = {}) {
       points: draft.points,
       windowCountdown: draft.windowCountdown,
       lightsOut: draft.lightsOut,
+      focusAuto: draft.focusAuto,
     };
     if (existing) store.updateHabit(existing.id, fields);
     else store.addHabit(fields);
@@ -113,6 +115,17 @@ export function HabitEditorView({ id = null } = {}) {
             draft.lightsOut = on;
           },
         }),
+        switchRow({
+          label: 'Tick after a long focus session',
+          description: `A focus session of ${formatMinutes(store.settings.deepWorkMinutes)} or more ticks this habit for you.`,
+          checked: draft.focusAuto,
+          onChange: (on) => {
+            draft.focusAuto = on;
+          },
+        }),
+        existing?.ritual
+          ? h('p', { class: 'card-note' }, icon('sunrise', { size: 15 }), 'Ticked for you when you finish the Begin ritual. You can still tick it by hand.')
+          : null,
       ),
       error,
       h('div', { class: 'form-actions' },

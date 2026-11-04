@@ -7,7 +7,7 @@ import { describeSchedule, emptyState, field, habitScheduleFields, pageHeader, s
 import { formatDayShort, h, plural } from './dom.js';
 import { haptic } from './fx.js';
 import { SECTION_TITLES, icon } from './icons.js';
-import { celebrate, confirm, toast } from './overlay.js';
+import { celebrate, confirm, dialog, toast } from './overlay.js';
 
 const progressOf = (project) => {
   const done = project.steps.filter((s) => s.done).length;
@@ -17,85 +17,45 @@ const progressOf = (project) => {
 const maintenanceText = (m) =>
   `${m.name} · ${describeSchedule(m.schedule, store.settings.weekStartsOn)}${m.schedule.type === 'weekly' ? '' : ` · ${SECTION_TITLES[m.group]}`}`;
 
-// --------------------------------------------------------------------- list
+export function projectCard(project) {
+  const p = progressOf(project);
+  return h(
+    'a',
+    { class: 'card project-card', href: `#/projects/${project.id}` },
+    h('div', { class: 'project-top' }, h('h2', { class: 'project-name' }, project.name), icon('chevronRight', { size: 18 })),
+    h('span', { class: 'progress-track' }, h('span', { class: 'progress-bar', style: { width: `${Math.round(p.ratio * 100)}%` } })),
+    h(
+      'p',
+      { class: 'project-meta' },
+      p.total ? `${p.done} of ${plural(p.total, 'step')} done` : 'No steps yet',
+      project.maintenance ? h('span', { class: 'project-then' }, ` · then “${project.maintenance.name}”`) : null,
+    ),
+  );
+}
 
-export function ProjectsView() {
-  const root = h('div', { class: 'view view-projects' });
-
-  function render() {
-    const active = store.activeProjects();
-    const finished = store.finishedProjects();
-    const newButton = h('a', { class: 'head-btn', href: '#/projects/new' }, icon('plus', { size: 18 }), 'New');
-    root.replaceChildren(
-      pageHeader({ title: 'Projects', subtitle: 'One-off resets, with a small habit to keep them that way.', actions: newButton }),
-      h(
-        'div',
-        { class: 'page-body' },
-        active.length
-          ? h('div', { class: 'project-list' }, active.map(projectCard))
-          : emptyState({
-              emoji: '🧹',
-              title: 'Start a project',
-              text: 'Break a one-off task into small steps. When it’s done, Daybreak can add a quick maintenance habit so it stays done.',
-              actions: [
-                h('a', { class: 'btn btn-primary', href: '#/projects/new' }, 'New project'),
-                h('a', { class: 'btn', href: '#/projects/new?example' }, 'Try an example'),
-              ],
-            }),
-        finished.length
-          ? h(
-              'section',
-              { class: 'card' },
-              h('div', { class: 'card-head' }, h('h2', { class: 'card-title' }, 'Finished'), h('span', { class: 'card-aside' }, plural(finished.length, 'project'))),
-              h(
-                'ul',
-                { class: 'finished-list' },
-                finished.map((p) => {
-                  const habit = store.habit(p.habitId);
-                  return h(
-                    'li',
-                    {},
-                    h(
-                      'a',
-                      { class: 'finished-row', href: `#/projects/${p.id}` },
-                      h('span', { class: 'finished-flag', 'aria-hidden': 'true' }, '🏁'),
-                      h(
-                        'span',
-                        { class: 'finished-text' },
-                        h('span', { class: 'finished-name' }, p.name),
-                        h('span', { class: 'finished-meta' }, `Finished ${formatDayShort(p.completedDay)}${habit && !habit.archivedDay ? ` · keeping it up with “${habit.name}”` : ''}`),
-                      ),
-                      icon('chevronRight', { size: 18 }),
-                    ),
-                  );
-                }),
-              ),
-            )
-          : null,
-      ),
-    );
+/**
+ * Make a parked project active. With three already active, gently explain why
+ * there's a limit and offer to swap one out instead.
+ */
+export async function activateProject(id) {
+  if (store.setProjectStatus(id, 'active').ok) {
+    toast('Now active', { emoji: '🎯' });
+    return true;
   }
-
-  function projectCard(project) {
-    const p = progressOf(project);
-    return h(
-      'a',
-      { class: 'card project-card', href: `#/projects/${project.id}` },
-      h('div', { class: 'project-top' }, h('h2', { class: 'project-name' }, project.name), icon('chevronRight', { size: 18 })),
-      h('span', { class: 'progress-track' }, h('span', { class: 'progress-bar', style: { width: `${Math.round(p.ratio * 100)}%` } })),
-      h(
-        'p',
-        { class: 'project-meta' },
-        p.total ? `${p.done} of ${plural(p.total, 'step')} done` : 'No steps yet',
-        project.maintenance ? h('span', { class: 'project-then' }, ` · then “${project.maintenance.name}”`) : null,
-      ),
-    );
-  }
-
-  const onChange = () => render();
-  store.addEventListener('change', onChange);
-  render();
-  return { el: root, destroy: () => store.removeEventListener('change', onChange) };
+  const active = store.activeProjects();
+  const choice = await dialog({
+    title: 'Three projects are already active',
+    message: 'Fewer things in progress means each one gets your real attention. Which one could rest in the parking lot for now?',
+    stacked: true,
+    buttons: [
+      ...active.map((p) => ({ label: `Park “${p.name}”`, value: p.id, kind: 'plain' })),
+      { label: 'Keep this one parked', value: null, kind: 'primary' },
+    ],
+  });
+  if (!choice) return false;
+  store.swapProjects(id, choice);
+  toast('Swapped. One thing at a time.', { emoji: '🔄' });
+  return true;
 }
 
 // ------------------------------------------------------------- new project
@@ -140,12 +100,14 @@ export function ProjectNewView({ example = false } = {}) {
       return;
     }
     const project = store.addProject({ name: draft.name, steps: stepList, maintenance: draft.withHabit ? draft.habit : null });
-    toast('Project created', { emoji: '🚀' });
+    if (project.status === 'parked') {
+      toast('Three projects are already active, so this one waits in the parking lot. Swap it in whenever you like.', { emoji: '🅿️', duration: 4500 });
+    } else toast('Project created', { emoji: '🚀' });
     navigate(`#/projects/${project.id}`, { replace: true });
   };
 
   root.append(
-    pageHeader({ title: 'New project', back: { href: '#/projects', label: 'Projects' } }),
+    pageHeader({ title: 'New project', back: { href: '#/foundations', label: 'Foundations' } }),
     h(
       'div',
       { class: 'page-body' },
@@ -187,8 +149,8 @@ export function ProjectDetailView({ id }) {
     const project = store.project(id);
     if (!project) {
       root.replaceChildren(
-        pageHeader({ title: 'Project', back: { href: '#/projects', label: 'Projects' } }),
-        h('div', { class: 'page-body' }, emptyState({ emoji: '🔍', title: 'Project not found', text: 'It may have been deleted.', actions: [h('a', { class: 'btn', href: '#/projects' }, 'All projects')] })),
+        pageHeader({ title: 'Project', back: { href: '#/foundations', label: 'Foundations' } }),
+        h('div', { class: 'page-body' }, emptyState({ emoji: '🔍', title: 'Project not found', text: 'It may have been deleted.', actions: [h('a', { class: 'btn', href: '#/foundations' }, 'Foundations')] })),
       );
       return;
     }
@@ -248,8 +210,10 @@ export function ProjectDetailView({ id }) {
     root.replaceChildren(
       pageHeader({
         title: project.name,
-        subtitle: finished ? `Finished ${formatDayShort(project.completedDay)}` : p.total ? `${p.done} of ${plural(p.total, 'step')} done` : 'Add the first step',
-        back: { href: '#/projects', label: 'Projects' },
+        subtitle: finished
+          ? `Finished ${formatDayShort(project.completedDay)}`
+          : `${project.status === 'parked' ? 'In the parking lot · ' : ''}${p.total ? `${p.done} of ${plural(p.total, 'step')} done` : 'Add the first step'}`,
+        back: { href: '#/foundations', label: 'Foundations' },
       }),
       h(
         'div',
@@ -264,6 +228,7 @@ export function ProjectDetailView({ id }) {
           project.steps.length ? stepList : h('p', { class: 'card-text' }, 'No steps yet. What’s the smallest first move?'),
           finished ? null : h('div', { class: 'add-row' }, addInput, h('button', { class: 'btn', type: 'button', onclick: addStep }, icon('plus', { size: 18 }), 'Add')),
         ),
+        finished ? null : statusCard(project),
         finished ? null : maintenanceCard(project),
         finished ? null : h('section', { class: 'card form-card' }, field('Project name', nameInput, { id: 'project-title' })),
         h(
@@ -275,6 +240,32 @@ export function ProjectDetailView({ id }) {
           h('button', { class: 'btn btn-danger-text btn-block', type: 'button', onclick: () => remove(project) }, icon('trash', { size: 18 }), 'Delete project'),
         ),
       ),
+    );
+  }
+
+  function statusCard(project) {
+    const parked = project.status === 'parked';
+    return h(
+      'section',
+      { class: 'card maintenance-card' },
+      h('span', { class: 'maintenance-icon' }, icon(parked ? 'parking' : 'target', { size: 20 })),
+      h(
+        'div',
+        { class: 'maintenance-text' },
+        h('h2', { class: 'card-title' }, parked ? 'In the parking lot' : 'Active'),
+        h('p', { class: 'card-text' }, parked ? 'Waiting safely until there’s room. Up to three projects can be active.' : 'One of your three active projects. You can choose it as your main thing each morning.'),
+      ),
+      h('button', {
+        class: 'btn btn-small',
+        type: 'button',
+        onclick: () => {
+          if (parked) activateProject(project.id);
+          else {
+            store.setProjectStatus(project.id, 'parked');
+            toast('Parked. It’ll wait here for you.', { emoji: '🅿️' });
+          }
+        },
+      }, parked ? 'Make active' : 'Park it'),
     );
   }
 
@@ -356,7 +347,7 @@ export function ProjectDetailView({ id }) {
     if (!ok) return;
     store.deleteProject(project.id);
     toast('Project deleted');
-    navigate('#/projects', { replace: true });
+    navigate('#/foundations', { replace: true });
   }
 
   const onChange = () => {

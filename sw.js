@@ -10,7 +10,7 @@
  * - When this file changes, the browser installs the new worker alongside the
  *   old one; the page offers the same banner, which activates it.
  */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const CACHE_PREFIX = 'daybreak-';
 const CACHE = `${CACHE_PREFIX}${VERSION}`;
 const SCOPE = new URL('./', self.location).href;
@@ -36,30 +36,48 @@ const PRECACHE = [
   './js/version.js',
   './js/core/backup.js',
   './js/core/badges.js',
+  './js/core/cards.js',
   './js/core/copy.js',
   './js/core/dates.js',
   './js/core/defaults.js',
+  './js/core/focus.js',
+  './js/core/migrate.js',
   './js/core/model.js',
   './js/core/morning-window.js',
+  './js/core/perspective.js',
   './js/core/review.js',
+  './js/core/ritual.js',
   './js/core/schedule.js',
   './js/core/scoring.js',
   './js/core/stats.js',
   './js/core/streaks.js',
+  './js/core/wip.js',
   './js/data/db.js',
   './js/data/store.js',
   './js/ui/backup.js',
+  './js/ui/begin.js',
+  './js/ui/card-library.js',
+  './js/ui/celebrations.js',
   './js/ui/components.js',
   './js/ui/dom.js',
+  './js/ui/evidence.js',
+  './js/ui/flow.js',
+  './js/ui/focus-timer.js',
+  './js/ui/foundations.js',
   './js/ui/fx.js',
+  './js/ui/garden.js',
   './js/ui/habit-editor.js',
   './js/ui/icons.js',
   './js/ui/overlay.js',
+  './js/ui/perspective.js',
   './js/ui/progress.js',
   './js/ui/projects.js',
+  './js/ui/reflect.js',
   './js/ui/review.js',
   './js/ui/settings.js',
+  './js/ui/stuck.js',
   './js/ui/today.js',
+  './js/ui/tune-up.js',
 ].map((path) => new URL(path, self.location).href);
 
 const PRECACHED = new Set(PRECACHE);

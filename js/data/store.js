@@ -7,27 +7,45 @@
  */
 import { BADGES, badgeStats, earnedBadgeIds } from '../core/badges.js';
 import { backupReminder, buildBackup, parseBackup } from '../core/backup.js';
-import { diffDays, logicalDayKey, startOfWeek, weekKeys } from '../core/dates.js';
+import { BUILT_IN_CARDS, libraryCards } from '../core/cards.js';
+import { addDays, diffDays, logicalDayKey, startOfWeek, weekKeys } from '../core/dates.js';
 import { createDefaultHabits } from '../core/defaults.js';
+import { autoTickHabitIds, evidenceSummary, minutesToLog, sessionsBetween } from '../core/focus.js';
+import { DATA_VERSION, migrateData } from '../core/migrate.js';
 import {
   LIMITS,
+  cleanMultiline,
   cleanText,
+  isCardRecordEmpty,
+  isJournalEmpty,
+  normalizeActiveSession,
+  normalizeCardRecord,
   normalizeDay,
+  normalizeFoundations,
   normalizeHabit,
+  normalizeInbox,
+  normalizeJournal,
   normalizeMeta,
   normalizeProject,
+  normalizeReflection,
+  normalizeRitual,
+  normalizeSession,
   normalizeSettings,
   uid,
 } from '../core/model.js';
 import { weekReview } from '../core/review.js';
-import { isWeekly, sectionOf, sectionsForDay, sortHabits, weeklyProgress } from '../core/schedule.js';
+import { recentCardIds, shouldOfferRitual, wordForToday } from '../core/ritual.js';
+import { isDueOn, isWeekly, sectionOf, sectionsForDay, sortHabits, weeklyProgress } from '../core/schedule.js';
 import { dayStats, levelInfo, totalPoints } from '../core/scoring.js';
 import { habitStreak, morningWinStreak, showingUpStreak } from '../core/stats.js';
+import { activeProjects, canActivate, parkedProjects, statusForNewProject } from '../core/wip.js';
 import { APP_VERSION } from '../version.js';
 import * as db from './db.js';
 
 const cloneDay = (record, date) =>
   record ? { ...record, done: { ...record.done } } : { date, done: {}, note: '' };
+const cloneJournal = (entry, date) =>
+  entry ? structuredClone(entry) : { date, ritual: null, reflection: null };
 
 class Store extends EventTarget {
   habits = [];
@@ -35,6 +53,12 @@ class Store extends EventTarget {
   projects = [];
   settings = normalizeSettings();
   meta = normalizeMeta();
+  journal = new Map();
+  sessions = [];
+  cardRecords = new Map();
+  foundations = normalizeFoundations();
+  inbox = [];
+  activeSession = null;
   /** { savedAt } when a pre-import safety copy exists */
   preImport = null;
   version = 0;
@@ -54,6 +78,7 @@ class Store extends EventTarget {
       const data = await db.loadAll();
       this.#hydrate(data);
       if (!this.meta.initialized) await this.#initialise();
+      await this.#migrate();
     } catch (err) {
       console.error('Storage unavailable', err);
       this.storageError = err;
@@ -66,7 +91,7 @@ class Store extends EventTarget {
     this.#requestPersistence();
   }
 
-  #hydrate({ habits = [], days = [], projects = [], kv = [] }) {
+  #hydrate({ habits = [], days = [], projects = [], kv = [], journal = [], sessions = [], cards = [] }) {
     this.habits = habits.map(normalizeHabit).filter(Boolean);
     this.days = new Map(
       days
@@ -75,9 +100,15 @@ class Store extends EventTarget {
         .map((d) => [d.date, d]),
     );
     this.projects = projects.map(normalizeProject).filter(Boolean);
+    this.journal = new Map(journal.map(normalizeJournal).filter(Boolean).map((j) => [j.date, j]));
+    this.sessions = sessions.map(normalizeSession).filter(Boolean).sort((a, b) => a.startedAt - b.startedAt);
+    this.cardRecords = new Map(cards.map(normalizeCardRecord).filter(Boolean).map((c) => [c.id, c]));
     const values = new Map(kv.map((row) => [row.key, row.value]));
     this.settings = normalizeSettings(values.get('settings'));
     this.meta = normalizeMeta(values.get('meta'));
+    this.foundations = normalizeFoundations(values.get('foundations'));
+    this.inbox = normalizeInbox(values.get('inbox'));
+    this.activeSession = normalizeActiveSession(values.get('activeSession'));
     const pre = values.get('preImport');
     this.preImport = pre?.savedAt ? { savedAt: pre.savedAt } : null;
   }
@@ -87,7 +118,14 @@ class Store extends EventTarget {
     this.habits = createDefaultHabits(today);
     this.days = new Map();
     this.projects = [];
-    this.meta = normalizeMeta({ initialized: true, installedAt: Date.now(), firstDay: today });
+    // A new install meets the ritual tomorrow morning; today starts with the welcome.
+    this.meta = normalizeMeta({
+      initialized: true,
+      installedAt: Date.now(),
+      firstDay: today,
+      dataVersion: DATA_VERSION,
+      ritualOfferedDay: today,
+    });
   }
 
   async #initialise() {
@@ -108,6 +146,27 @@ class Store extends EventTarget {
         { key: 'meta', value: this.meta },
       ],
     });
+  }
+
+  /** Upgrade older data once, writing every change in a single transaction. */
+  async #migrate() {
+    const { data, changed, notices, touched } = migrateData(
+      { habits: this.habits, days: this.days, projects: this.projects, meta: this.meta },
+      { todayKey: this.todayKey() },
+    );
+    if (!changed) return;
+    const habits = data.habits.map(normalizeHabit).filter(Boolean);
+    const projects = data.projects.map(normalizeProject).filter(Boolean);
+    const meta = normalizeMeta({ ...data.meta, notices: [...this.meta.notices, ...notices] });
+    const ops = [
+      ...habits.filter((h) => touched.habits.includes(h.id)).map((h) => ({ store: 'habits', put: h })),
+      ...projects.filter((p) => touched.projects.includes(p.id)).map((p) => ({ store: 'projects', put: p })),
+      { store: 'kv', put: { key: 'meta', value: meta } },
+    ];
+    await db.batch(ops);
+    this.habits = habits;
+    this.projects = projects;
+    this.meta = meta;
   }
 
   async #requestPersistence() {
@@ -187,6 +246,42 @@ class Store extends EventTarget {
     this.#write(() => db.put('kv', { key: 'meta', value: copy }));
   }
 
+  #saveKv(key, value) {
+    if (value === null || value === undefined) {
+      this.#write(() => db.remove('kv', key));
+    } else {
+      const copy = structuredClone(value);
+      this.#write(() => db.put('kv', { key, value: copy }));
+    }
+  }
+
+  #saveJournal(entry) {
+    if (isJournalEmpty(entry)) {
+      this.journal.delete(entry.date);
+      this.#write(() => db.remove('journal', entry.date));
+    } else {
+      this.journal.set(entry.date, entry);
+      const copy = structuredClone(entry);
+      this.#write(() => db.put('journal', copy));
+    }
+  }
+
+  #saveSession(session) {
+    const copy = { ...session };
+    this.#write(() => db.put('sessions', copy));
+  }
+
+  #saveCardRecord(record) {
+    if (isCardRecordEmpty(record)) {
+      this.cardRecords.delete(record.id);
+      this.#write(() => db.remove('cards', record.id));
+    } else {
+      this.cardRecords.set(record.id, record);
+      const copy = { ...record };
+      this.#write(() => db.put('cards', copy));
+    }
+  }
+
   // ----------------------------------------------------------------- reading
 
   todayKey(date = new Date()) {
@@ -225,6 +320,8 @@ class Store extends EventTarget {
       projects: this.projects,
       settings: this.settings,
       meta: this.meta,
+      journal: this.journal,
+      sessions: this.sessions,
       today,
     };
   }
@@ -282,7 +379,7 @@ class Store extends EventTarget {
   }
 
   hasData() {
-    return this.days.size > 0 || this.projects.some((p) => p.completedDay);
+    return this.days.size > 0 || this.journal.size > 0 || this.sessions.length > 0 || this.projects.some((p) => p.completedDay);
   }
 
   /** Days since the last backup (calendar days), or null if never. */
@@ -484,19 +581,32 @@ class Store extends EventTarget {
     return this.projects.find((p) => p.id === id) || null;
   }
 
+  /** Open projects you're working on now (three at most). */
   activeProjects() {
-    return this.projects.filter((p) => !p.completedDay).sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
+    return activeProjects(this.projects);
+  }
+
+  /** Ideas and projects waiting until there's room. */
+  parkedProjects() {
+    return parkedProjects(this.projects);
+  }
+
+  canActivateProject(id = null) {
+    return canActivate(this.projects, id);
   }
 
   finishedProjects() {
     return this.projects.filter((p) => p.completedDay).sort((a, b) => (a.completedDay < b.completedDay ? 1 : -1));
   }
 
-  addProject({ name, steps = [], maintenance = null }) {
+  /** New projects start active while there's room, otherwise in the parking lot. */
+  addProject({ name, steps = [], maintenance = null, status = null }) {
     const orders = this.projects.map((p) => p.order);
+    const wanted = status === 'parked' ? 'parked' : statusForNewProject(this.projects);
     const project = normalizeProject({
       id: uid('p-'),
       name,
+      status: wanted,
       steps: steps.map((text) => ({ id: uid('s-'), text, done: false })),
       maintenance,
       createdAt: Date.now(),
@@ -518,6 +628,29 @@ class Store extends EventTarget {
     this.#saveProject(next);
     this.#changed();
     return next;
+  }
+
+  /** Park or activate a project. Activating is refused gently when three are active. */
+  setProjectStatus(id, status) {
+    const project = this.project(id);
+    if (!project) return { ok: false, reason: 'missing' };
+    if (status === 'active' && !canActivate(this.projects, id)) return { ok: false, reason: 'limit' };
+    this.updateProject(id, { status: status === 'parked' ? 'parked' : 'active' });
+    return { ok: true };
+  }
+
+  /** Park one project and activate another in a single step. */
+  swapProjects(activateId, parkId) {
+    const toActivate = this.project(activateId);
+    const toPark = this.project(parkId);
+    if (!toActivate || !toPark) return false;
+    const a = normalizeProject({ ...toActivate, status: 'active' });
+    const p = normalizeProject({ ...toPark, status: 'parked' });
+    this.projects = this.projects.map((x) => (x.id === a.id ? a : x.id === p.id ? p : x));
+    this.#saveProject(a);
+    this.#saveProject(p);
+    this.#changed();
+    return true;
   }
 
   addStep(projectId, text) {
@@ -558,14 +691,318 @@ class Store extends EventTarget {
     return { habit, levelUp: after.level.level > before.level.level ? after.level : null };
   }
 
+  /** Reopen a finished project: active if there's room, otherwise parked. */
   reopenProject(id) {
-    return this.updateProject(id, { completedDay: null });
+    return this.updateProject(id, { completedDay: null, status: canActivate(this.projects, id) ? 'active' : 'parked' });
   }
 
   deleteProject(id) {
     if (!this.project(id)) return;
     this.projects = this.projects.filter((p) => p.id !== id);
     this.#write(() => db.remove('projects', id));
+    this.#changed();
+  }
+
+  // ------------------------------------------------------- Begin and journal
+
+  journalEntry(key) {
+    return this.journal.get(key) || null;
+  }
+
+  ritual(key = this.todayKey()) {
+    return this.journal.get(key)?.ritual || null;
+  }
+
+  reflection(key = this.todayKey()) {
+    return this.journal.get(key)?.reflection || null;
+  }
+
+  /** Whether the ritual should open now, as the day's front door. */
+  shouldOfferRitual(now = new Date()) {
+    return shouldOfferRitual({
+      enabled: this.settings.ritualEnabled,
+      now,
+      dayStart: this.settings.dayStart,
+      offeredDay: this.meta.ritualOfferedDay,
+      entry: this.journal.get(this.todayKey(now)),
+    });
+  }
+
+  markRitualOffered(key = this.todayKey()) {
+    if (this.meta.ritualOfferedDay === key) return;
+    this.updateMeta({ ritualOfferedDay: key });
+  }
+
+  /** The word chosen in last night's reflection. */
+  wordForToday(key = this.todayKey()) {
+    return wordForToday(this.journal, key);
+  }
+
+  recentCardIds(key = this.todayKey()) {
+    return recentCardIds(this.journal, key);
+  }
+
+  /** Save progress through the ritual without finishing it. */
+  updateRitual(key, patch) {
+    const entry = cloneJournal(this.journal.get(key), key);
+    entry.ritual = normalizeRitual({ ...(entry.ritual || {}), ...patch });
+    this.#saveJournal(entry);
+    this.#changed();
+    return entry.ritual;
+  }
+
+  /**
+   * Finish the ritual. Ticks the "Began my day with intention" habit, which
+   * counts towards the Morning Win. Returns { habit, result } where result is
+   * the tick's celebration info (or null if it was already ticked).
+   */
+  completeRitual(key, patch = {}) {
+    const entry = cloneJournal(this.journal.get(key), key);
+    entry.ritual = normalizeRitual({ ...(entry.ritual || {}), ...patch, completedAt: Date.now(), skippedAt: null });
+    this.#saveJournal(entry);
+    if (this.meta.ritualOfferedDay !== key || !this.meta.ritualIntroSeen) {
+      this.meta = normalizeMeta({ ...this.meta, ritualOfferedDay: key, ritualIntroSeen: true });
+      this.#saveMeta();
+    }
+    const habit = this.habits.find((h) => h.ritual && isDueOn(h, key)) || null;
+    const result = habit && !this.isDone(key, habit.id) ? this.toggleHabit(key, habit.id) : null;
+    if (!result) this.#changed();
+    this.#scheduleBadgeCheck();
+    return { habit, result };
+  }
+
+  skipRitual(key = this.todayKey()) {
+    const entry = cloneJournal(this.journal.get(key), key);
+    if (entry.ritual?.completedAt) return;
+    entry.ritual = normalizeRitual({ ...(entry.ritual || {}), skippedAt: Date.now() });
+    this.#saveJournal(entry);
+    this.meta = normalizeMeta({ ...this.meta, ritualOfferedDay: key, ritualIntroSeen: true });
+    this.#saveMeta();
+    this.#changed();
+  }
+
+  saveReflection(key, patch) {
+    const entry = cloneJournal(this.journal.get(key), key);
+    entry.reflection = normalizeReflection({ ...(entry.reflection || {}), ...patch, savedAt: Date.now() });
+    this.#saveJournal(entry);
+    this.#changed();
+    return entry.reflection;
+  }
+
+  // ---------------------------------------------------- focus and evidence
+
+  startSession({ minutes, projectId = null, intent = '', rescue = null }) {
+    if (this.activeSession) return this.activeSession;
+    this.activeSession = normalizeActiveSession({
+      id: uid('f-'),
+      startedAt: Date.now(),
+      plannedMinutes: minutes,
+      projectId,
+      intent,
+      rescue,
+      extended: false,
+    });
+    this.#saveKv('activeSession', this.activeSession);
+    this.#changed();
+    return this.activeSession;
+  }
+
+  /** Keep going past the planned time. */
+  extendSession() {
+    if (!this.activeSession) return;
+    this.activeSession = { ...this.activeSession, extended: true };
+    this.#saveKv('activeSession', this.activeSession);
+    this.#changed();
+  }
+
+  /**
+   * End the running session and log it as evidence. A long enough session
+   * ticks your deep-work habit. Returns { session, ticked, results }.
+   */
+  finishSession(now = Date.now()) {
+    const active = this.activeSession;
+    if (!active) return null;
+    const minutes = minutesToLog(active, now);
+    this.activeSession = null;
+    this.#saveKv('activeSession', null);
+    if (minutes < 1) {
+      this.#changed();
+      return { session: null, ticked: [], results: [] };
+    }
+    const day = this.todayKey(new Date(active.startedAt));
+    const session = normalizeSession({
+      id: active.id,
+      kind: 'focus',
+      day,
+      startedAt: active.startedAt,
+      endedAt: active.startedAt + minutes * 60000,
+      minutes,
+      plannedMinutes: active.plannedMinutes,
+      projectId: active.projectId,
+      intent: active.intent,
+      rescue: active.rescue,
+    });
+    this.sessions.push(session);
+    this.#saveSession(session);
+    const ids = autoTickHabitIds({
+      habits: this.habits,
+      session,
+      deepWorkMinutes: this.settings.deepWorkMinutes,
+      isDone: (k, id) => this.isDone(k, id),
+    });
+    const results = ids.map((id) => this.toggleHabit(day, id));
+    if (!ids.length) this.#changed();
+    this.#scheduleBadgeCheck();
+    return { session, ticked: ids.map((id) => this.habit(id)), results };
+  }
+
+  /** Stop without logging. */
+  cancelSession() {
+    if (!this.activeSession) return;
+    this.activeSession = null;
+    this.#saveKv('activeSession', null);
+    this.#changed();
+  }
+
+  session(id) {
+    return this.sessions.find((s) => s.id === id) || null;
+  }
+
+  updateSession(id, patch) {
+    const index = this.sessions.findIndex((s) => s.id === id);
+    if (index < 0) return null;
+    const next = normalizeSession({ ...this.sessions[index], ...patch, id });
+    if (!next) return null;
+    this.sessions[index] = next;
+    this.#saveSession(next);
+    this.#changed();
+    if (next.shipped) this.#scheduleBadgeCheck();
+    return next;
+  }
+
+  /** Record something shipped or released that wasn't tied to a session. */
+  addShipped({ note, projectId = null }) {
+    const now = Date.now();
+    const session = normalizeSession({
+      id: uid('e-'),
+      kind: 'shipped',
+      day: this.todayKey(),
+      startedAt: now,
+      endedAt: now,
+      projectId,
+      intent: '',
+      shipped: true,
+      shippedNote: note,
+    });
+    if (!session) return null;
+    this.sessions.push(session);
+    this.#saveSession(session);
+    this.#changed();
+    this.#scheduleBadgeCheck();
+    return session;
+  }
+
+  deleteSession(id) {
+    if (!this.session(id)) return;
+    this.sessions = this.sessions.filter((s) => s.id !== id);
+    this.#write(() => db.remove('sessions', id));
+    this.#changed();
+  }
+
+  sessionsBetween(fromKey, toKey) {
+    return sessionsBetween(this.sessions, fromKey, toKey);
+  }
+
+  sessionsForWeek(weekStart) {
+    return this.sessionsBetween(weekStart, addDays(weekStart, 6));
+  }
+
+  evidence(sessions = this.sessions) {
+    return evidenceSummary(sessions);
+  }
+
+  // -------------------------------------------------------------------- cards
+
+  cards() {
+    return this.#memoize('cards', () => libraryCards(this.cardRecords));
+  }
+
+  card(id) {
+    return this.cards().find((c) => c.id === id) || null;
+  }
+
+  setCardFlags(id, flags) {
+    if (!this.card(id)) return;
+    const existing = this.cardRecords.get(id) || { id, custom: false };
+    const record = normalizeCardRecord({ ...existing, ...flags });
+    if (!record) return;
+    this.#saveCardRecord(record);
+    this.#changed();
+  }
+
+  /** Add your own card, or edit any card's words. */
+  saveCard({ id = null, text, theme, credit = '' }) {
+    const builtIn = id ? BUILT_IN_CARDS.find((c) => c.id === id) : null;
+    const clean = cleanText(text, LIMITS.card);
+    if (!clean) throw new Error('A card needs some words.');
+    let record;
+    if (builtIn) {
+      const existing = this.cardRecords.get(id) || { id, custom: false };
+      record = normalizeCardRecord({ ...existing, text: clean === builtIn.text ? '' : clean });
+    } else {
+      const existing = id ? this.cardRecords.get(id) : null;
+      record = normalizeCardRecord({ ...(existing || {}), id: existing?.id || uid('c-'), custom: true, text: clean, theme, credit });
+    }
+    this.#saveCardRecord(record);
+    this.#changed();
+    return record;
+  }
+
+  /** Delete one of your cards, or reset a built-in card to its original words. */
+  deleteCard(id) {
+    const record = this.cardRecords.get(id);
+    if (!record) return;
+    if (record.custom) {
+      this.cardRecords.delete(id);
+      this.#write(() => db.remove('cards', id));
+    } else {
+      this.#saveCardRecord({ ...record, text: '' });
+    }
+    this.#changed();
+  }
+
+  // -------------------------------------------------------------- foundations
+
+  updateFoundations(patch) {
+    this.foundations = normalizeFoundations({ ...this.foundations, ...patch, updatedAt: Date.now() });
+    this.#saveKv('foundations', this.foundations);
+    this.#changed();
+    return this.foundations;
+  }
+
+  // -------------------------------------------------------------------- inbox
+
+  addIdea(text) {
+    const clean = cleanMultiline(text, LIMITS.inbox);
+    if (!clean) return null;
+    const item = { id: uid('i-'), text: clean, createdAt: Date.now() };
+    this.inbox = normalizeInbox([...this.inbox, item]);
+    this.#saveKv('inbox', this.inbox);
+    this.#changed();
+    return item;
+  }
+
+  removeIdea(id) {
+    this.inbox = this.inbox.filter((i) => i.id !== id);
+    this.#saveKv('inbox', this.inbox);
+    this.#changed();
+  }
+
+  /** Put back an idea that was just deleted (undo). */
+  restoreIdea(item) {
+    if (!item || this.inbox.some((i) => i.id === item.id)) return;
+    this.inbox = normalizeInbox([...this.inbox, item].sort((a, b) => a.createdAt - b.createdAt));
+    this.#saveKv('inbox', this.inbox);
     this.#changed();
   }
 
@@ -582,6 +1019,20 @@ class Store extends EventTarget {
     this.meta = normalizeMeta({ ...this.meta, ...patch });
     this.#saveMeta();
     this.#changed();
+  }
+
+  /** One-off messages (e.g. after an update) for the UI to show once. */
+  takeNotices() {
+    const notices = this.meta.notices;
+    if (notices.length) {
+      this.meta = normalizeMeta({ ...this.meta, notices: [] });
+      this.#saveMeta();
+    }
+    return notices;
+  }
+
+  markTuneUp(weekStart) {
+    this.updateMeta({ tuneUps: { ...this.meta.tuneUps, [weekStart]: Date.now() } });
   }
 
   markExported() {
@@ -601,45 +1052,91 @@ class Store extends EventTarget {
 
   exportData(now = new Date()) {
     return buildBackup(
-      { habits: this.habits, days: this.days, projects: this.projects, settings: this.settings, meta: this.meta },
+      {
+        habits: this.habits,
+        days: this.days,
+        projects: this.projects,
+        settings: this.settings,
+        meta: this.meta,
+        journal: this.journal,
+        sessions: this.sessions,
+        cardRecords: this.cardRecords,
+        foundations: this.foundations,
+        inbox: this.inbox,
+      },
       { appVersion: APP_VERSION, now },
     );
   }
 
-  async #replaceEverything({ habits, days, projects, settings, meta }, preImport) {
+  async #replaceEverything(data, preImport) {
+    const {
+      habits,
+      days,
+      projects,
+      settings,
+      meta,
+      journal = [],
+      sessions = [],
+      cardRecords = [],
+      foundations = normalizeFoundations(),
+      inbox = [],
+    } = data;
     await this.flush();
     const kv = [
       { key: 'settings', value: settings },
       { key: 'meta', value: meta },
+      { key: 'foundations', value: foundations },
+      { key: 'inbox', value: inbox },
     ];
     if (preImport) kv.push({ key: 'preImport', value: preImport });
-    if (!this.memoryOnly) await db.replaceAll({ habits, days, projects, kv });
+    if (!this.memoryOnly) {
+      await db.replaceAll({ habits, days, projects, kv, journal, sessions, cards: cardRecords });
+    }
     this.habits = habits;
     this.days = new Map(days.map((d) => [d.date, d]));
     this.projects = projects;
     this.settings = settings;
     this.meta = meta;
+    this.journal = new Map(journal.map((j) => [j.date, j]));
+    this.sessions = [...sessions].sort((a, b) => a.startedAt - b.startedAt);
+    this.cardRecords = new Map(cardRecords.map((c) => [c.id, c]));
+    this.foundations = foundations;
+    this.inbox = inbox;
+    this.activeSession = null;
     this.preImport = preImport ? { savedAt: preImport.savedAt } : null;
     this.#checkBadges({ silent: true });
     this.#changed();
   }
 
+  /** Bring a parsed backup up to the current data version. */
+  #upgrade(parsedData) {
+    const { data } = migrateData(parsedData, { todayKey: this.todayKey() });
+    return {
+      ...data,
+      habits: data.habits.map(normalizeHabit).filter(Boolean),
+      projects: data.projects.map(normalizeProject).filter(Boolean),
+    };
+  }
+
   /** Replace all data with a validated backup (from parseBackup). */
   async importBackup(parsed) {
     if (!parsed?.ok) throw new Error(parsed?.error || 'Invalid backup.');
-    const { habits, days, projects, settings } = parsed.data;
+    const upgraded = this.#upgrade(parsed.data);
+    const { habits, days } = upgraded;
     const keys = [...days.map((d) => d.date), ...habits.map((h) => h.createdDay).filter(Boolean)].sort();
     const meta = normalizeMeta({
-      ...parsed.data.meta,
+      ...upgraded.meta,
       initialized: true,
-      installedAt: parsed.data.meta.installedAt || Date.now(),
-      firstDay: parsed.data.meta.firstDay || keys[0] || this.todayKey(),
+      installedAt: upgraded.meta.installedAt || Date.now(),
+      firstDay: upgraded.meta.firstDay || keys[0] || this.todayKey(),
       lastExportAt: Math.max(this.meta.lastExportAt || 0, parsed.exportedAt || 0) || null,
       welcomed: true,
-      installHintDismissed: this.meta.installHintDismissed || parsed.data.meta.installHintDismissed,
+      installHintDismissed: this.meta.installHintDismissed || upgraded.meta.installHintDismissed,
+      ritualOfferedDay: this.meta.ritualOfferedDay,
+      notices: [],
     });
     const preImport = { savedAt: Date.now(), backup: this.exportData() };
-    await this.#replaceEverything({ habits, days, projects, settings, meta }, preImport);
+    await this.#replaceEverything({ ...upgraded, meta }, preImport);
   }
 
   /** Undo the last import using the safety copy taken just before it. */
@@ -647,8 +1144,15 @@ class Store extends EventTarget {
     const row = this.memoryOnly ? null : await db.get('kv', 'preImport');
     const parsed = parseBackup(row?.value?.backup);
     if (!parsed.ok) throw new Error('No earlier copy was found.');
-    const meta = normalizeMeta({ ...parsed.data.meta, initialized: true, lastExportAt: this.meta.lastExportAt });
-    await this.#replaceEverything({ ...parsed.data, meta }, null);
+    const upgraded = this.#upgrade(parsed.data);
+    const meta = normalizeMeta({
+      ...upgraded.meta,
+      initialized: true,
+      lastExportAt: this.meta.lastExportAt,
+      ritualOfferedDay: this.meta.ritualOfferedDay,
+      notices: [],
+    });
+    await this.#replaceEverything({ ...upgraded, meta }, null);
   }
 
   /** Start completely fresh with the starter habits. */
@@ -666,6 +1170,9 @@ class Store extends EventTarget {
           firstDay: today,
           welcomed: true,
           installHintDismissed: this.meta.installHintDismissed,
+          dataVersion: DATA_VERSION,
+          ritualOfferedDay: today,
+          ritualIntroSeen: true,
         }),
       },
       null,

@@ -24,7 +24,7 @@ describe('day score', () => {
     const s = dayStats(habits, undefined, TUESDAY, settings);
     assert.equal(s.points, 0);
     assert.equal(s.doneCount, 0);
-    assert.equal(s.dueCount, 13); // 14 day habits, the gym isn't due on Tuesdays
+    assert.equal(s.dueCount, 14); // 15 day habits, the gym isn't due on Tuesdays
     assert.equal(s.morningWin, false);
   });
 
@@ -32,16 +32,25 @@ describe('day score', () => {
     const s = dayStats(habits, record(TUESDAY, ['d-water', 'd-deep-work']), TUESDAY, settings);
     assert.equal(s.points, 10 + 20);
     assert.equal(s.doneCount, 2);
-    assert.equal(s.ratio, 2 / 13);
+    assert.equal(s.ratio, 2 / 14);
   });
 
   test('Morning Win bonus when every due morning habit is done', () => {
     const morning = ids('morning', TUESDAY);
-    assert.equal(morning.length, 4); // no gym on Tuesday
+    assert.equal(morning.length, 5); // the Begin ritual + 4; no gym on Tuesday
     const s = dayStats(habits, record(TUESDAY, morning), TUESDAY, settings);
     assert.equal(s.morningWin, true);
     assert.equal(s.bonus, 25);
-    assert.equal(s.points, 10 + 10 + 10 + 15 + 25);
+    assert.equal(s.points, 15 + 10 + 10 + 10 + 15 + 25);
+  });
+
+  test('the Begin ritual habit is part of the Morning Win', () => {
+    const withoutRitual = ids('morning', TUESDAY).filter((id) => id !== 'd-ritual');
+    assert.equal(dayStats(habits, record(TUESDAY, withoutRitual), TUESDAY, settings).morningWin, false);
+    const ritual = habits.find((h) => h.ritual);
+    assert.equal(ritual.id, 'd-ritual');
+    assert.equal(ritual.group, 'morning');
+    assert.equal(ritual.name, 'Began my day with intention');
   });
 
   test('on gym days the gym is part of the Morning Win', () => {
@@ -50,7 +59,7 @@ describe('day score', () => {
     const all = ids('morning', WEDNESDAY);
     const s = dayStats(habits, record(WEDNESDAY, all), WEDNESDAY, settings);
     assert.equal(s.morningWin, true);
-    assert.equal(s.points, 10 + 10 + 10 + 15 + 20 + 25);
+    assert.equal(s.points, 15 + 10 + 10 + 10 + 15 + 20 + 25);
   });
 
   test('the bonus size comes from settings', () => {
@@ -77,7 +86,7 @@ describe('day score', () => {
     const later = habits.map((h) => (h.id === 'd-water' ? { ...h, createdDay: '2026-11-04' } : h));
     const s = dayStats(later, record(TUESDAY, ['d-water']), TUESDAY, settings);
     assert.equal(s.points, 0);
-    assert.equal(s.dueCount, 12);
+    assert.equal(s.dueCount, 13);
   });
 
   test('finishing a project adds a bonus on that day', () => {

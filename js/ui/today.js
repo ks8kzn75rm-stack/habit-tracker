@@ -6,7 +6,10 @@
  */
 import { greeting, heroMessage, phaseFor } from '../core/copy.js';
 import { addDays, minutesIntoDay } from '../core/dates.js';
+import { formatMinutes, sessionProgress } from '../core/focus.js';
 import { formatRemaining, morningWindowStatus } from '../core/morning-window.js';
+import { seasonPhrase, seasonWeeks } from '../core/perspective.js';
+import { RITUAL_LATEST_MINUTES } from '../core/ritual.js';
 import { SECTIONS, isWeekly, sectionOf } from '../core/schedule.js';
 import { store } from '../data/store.js';
 import { navigate } from '../nav.js';
@@ -14,6 +17,7 @@ import { isIOS, isStandalone } from '../platform.js';
 import { exportBackup } from './backup.js';
 import { emptyState } from './components.js';
 import {
+  fill,
   formatDayLong,
   formatDayNumber,
   formatTime,
@@ -64,7 +68,9 @@ export function TodayView({ dayKey = null } = {}) {
     ).join('|');
     const s = store.settings;
     const phase = phaseFor(minutesIntoDay(new Date()));
-    return [key, today, phase, habits, s.lightsOut, s.windowEnd, s.morningWinBonus, store.meta.firstDay, noticeFlags(key, today)].join('#');
+    const reflection = store.reflection(today);
+    const reflected = reflection?.savedAt ? `r:${reflection.tomorrowWord}` : '';
+    return [key, today, phase, habits, s.lightsOut, s.windowEnd, s.morningWinBonus, store.meta.firstDay, noticeFlags(key, today), reflected].join('#');
   }
 
   // ------------------------------------------------------------------ build
@@ -79,6 +85,7 @@ export function TodayView({ dayKey = null } = {}) {
     body.append(...buildNotices(key, today));
     if (!isToday) body.append(buildPastBanner(key, today));
     if (isToday) {
+      body.append(buildBegin());
       const windowCard = buildWindowCard(key);
       if (windowCard) body.append(windowCard);
     }
@@ -217,6 +224,97 @@ export function TodayView({ dayKey = null } = {}) {
         ),
       );
     });
+  }
+
+  // ------------------------------------------------------------ Begin card
+
+  function buildBegin() {
+    refs.begin = h('section', { class: 'begin-card', 'aria-labelledby': 'begin-title' });
+    refs.beginSignature = '';
+    return refs.begin;
+  }
+
+  /** Always on Today: Begin (or return to a running session) and "I'm stuck". */
+  function patchBegin() {
+    if (!refs.begin) return;
+    const today = refs.today;
+    const now = new Date();
+    const minutes = minutesIntoDay(now);
+    const s = store.settings;
+    const active = store.activeSession;
+    const ritual = store.ritual(today);
+    const main = ritual?.mainThing;
+    const mainText = main?.text || store.project(main?.projectId)?.name || '';
+    const focused = store.sessionsBetween(today, today).filter((x) => x.kind === 'focus');
+    const focusMinutes = focused.reduce((sum, x) => sum + x.minutes, 0);
+    const word = store.wordForToday(today);
+
+    let kicker;
+    let title;
+    let sub;
+    if (active) {
+      const p = sessionProgress(active, now.getTime());
+      kicker = 'In focus';
+      title = active.intent || mainText || 'Your work';
+      sub = active.extended
+        ? `${formatMinutes(p.elapsedMinutes)} and counting`
+        : p.reachedPlan
+          ? `${formatMinutes(active.plannedMinutes)} done. Log it when you’re ready.`
+          : `${p.elapsedMinutes} of ${active.plannedMinutes} min`;
+    } else {
+      kicker = mainText ? 'Today’s main thing' : 'Ready when you are';
+      title = mainText || 'One thing, one block of time';
+      if (focused.length) sub = `${formatMinutes(focusMinutes)} of focus today. That’s showing up.`;
+      else if (ritual?.plan && ritual.plan.startAt !== null && ritual.plan.startAt > minutes) sub = `Starting at ${formatTime(ritual.plan.startAt)} for ${ritual.plan.minutes} min`;
+      else if (ritual?.plan) sub = `${ritual.plan.minutes} minutes, whenever you’re ready.`;
+      else sub = 'Starting is the win. Five minutes counts.';
+    }
+    const offerRitual = s.ritualEnabled && !ritual?.completedAt && !active && minutes < RITUAL_LATEST_MINUTES;
+    const season = s.seasonEnabled && s.seasonEnd ? `${s.seasonLabel || 'This season'} · ${seasonPhrase(seasonWeeks(today, s.seasonEnd))}` : '';
+
+    const signature = [kicker, title, sub, word, offerRitual, season, Boolean(active)].join('|');
+    if (signature === refs.beginSignature) return;
+    refs.beginSignature = signature;
+    refs.begin.classList.toggle('is-running', Boolean(active));
+    fill(
+      refs.begin,
+      h(
+        'div',
+        { class: 'begin-top' },
+        h('p', { class: 'begin-kicker' }, active ? h('span', { class: 'begin-pulse', 'aria-hidden': 'true' }) : null, kicker),
+        word ? h('span', { class: 'begin-word', title: 'Your word for today' }, icon('sparkle', { size: 13 }), word) : null,
+      ),
+      h('h2', { class: 'begin-title', id: 'begin-title' }, title),
+      h('p', { class: 'begin-sub' }, sub),
+      h(
+        'div',
+        { class: 'begin-actions' },
+        h('a', {
+          class: 'btn btn-primary begin-go',
+          href: '#/focus',
+          onclick: (e) => {
+            e.preventDefault();
+            navigate('#/focus');
+          },
+        }, icon('play', { size: 18 }), active ? 'Return to focus' : 'Begin'),
+        h('a', {
+          class: 'btn begin-stuck',
+          href: '#/stuck',
+          onclick: (e) => {
+            e.preventDefault();
+            navigate('#/stuck');
+          },
+        }, icon('lifebuoy', { size: 18 }), 'I’m stuck'),
+      ),
+      offerRitual || season
+        ? h(
+            'div',
+            { class: 'begin-links' },
+            offerRitual ? h('a', { class: 'begin-link', href: '#/begin' }, icon('sunrise', { size: 15 }), 'Morning ritual · 1 min') : null,
+            season ? h('a', { class: 'begin-link', href: '#/perspective' }, icon('mountain', { size: 15 }), season) : null,
+          )
+        : null,
+    );
   }
 
   function buildPastBanner(key, today) {
@@ -370,6 +468,29 @@ export function TodayView({ dayKey = null } = {}) {
       { class: 'card note-card' },
       h('label', { class: 'note-label', for: 'day-note' }, icon('edit', { size: 16 }), isToday ? 'How was today?' : `How was ${formatWeekday(key)}?`),
       h('div', { class: 'note-field' }, input, saved),
+      isToday ? reflectLink() : null,
+    );
+  }
+
+  /** The evening reflection lives with the daily note. */
+  function reflectLink() {
+    const reflection = store.reflection(refs.today);
+    const evening = phaseFor(minutesIntoDay(new Date())) === 'evening';
+    if (reflection?.savedAt) {
+      return h(
+        'a',
+        { class: 'reflect-link is-done', href: '#/reflect' },
+        icon('moon', { size: 16 }),
+        h('span', {}, reflection.tomorrowWord ? ['Tomorrow’s word: ', h('b', {}, reflection.tomorrowWord)] : 'Reflected tonight'),
+        h('span', { class: 'reflect-edit' }, 'Edit'),
+      );
+    }
+    return h(
+      'a',
+      { class: `reflect-link${evening ? ' is-evening' : ''}`, href: '#/reflect' },
+      icon('moon', { size: 16 }),
+      h('span', {}, 'Evening reflection · 1 min'),
+      icon('chevronRight', { size: 16 }),
     );
   }
 
@@ -384,6 +505,7 @@ export function TodayView({ dayKey = null } = {}) {
     patchStrip();
     patchRows();
     patchWindow();
+    patchBegin();
   }
 
   function patchHero(animate) {

@@ -69,7 +69,7 @@ function lockScroll(on) {
  * A centred dialog with buttons. Resolves with the chosen button's value.
  * buttons: [{ label, value, kind: 'primary' | 'danger' | 'plain' }]
  */
-export function dialog({ title, message, buttons, emoji = '' }) {
+export function dialog({ title, message, buttons, emoji = '', stacked = false }) {
   return new Promise((resolve) => {
     const previousFocus = document.activeElement;
     const backdrop = h('div', { class: 'dialog-backdrop' });
@@ -95,7 +95,7 @@ export function dialog({ title, message, buttons, emoji = '' }) {
       message ? h('div', { class: 'dialog-message' }, message) : null,
       h(
         'div',
-        { class: 'dialog-buttons' },
+        { class: `dialog-buttons${stacked ? ' is-stacked' : ''}` },
         buttons.map((b) =>
           h('button', { class: `btn btn-${b.kind || 'plain'}`, type: 'button', onclick: () => done(b.value) }, b.label),
         ),
