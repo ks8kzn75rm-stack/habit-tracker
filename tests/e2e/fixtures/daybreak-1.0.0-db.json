@@ -1,0 +1,411 @@
+{
+  "about": "A real IndexedDB from Daybreak 1.0.0 (data version 1), captured by running that release: two days of ticks with a note, a finished project with its maintenance habit, and four open projects (1.0.0 had no limit).",
+  "name": "daybreak",
+  "version": 1,
+  "keyPaths": {
+    "habits": "id",
+    "days": "date",
+    "projects": "id",
+    "kv": "key"
+  },
+  "stores": {
+    "days": [
+      {
+        "date": "2026-11-02",
+        "done": {
+          "d-water": 1793606400796,
+          "d-sleep": 1793606400846,
+          "d-sunlight": 1793606400880
+        },
+        "note": "First day with the app."
+      },
+      {
+        "date": "2026-11-03",
+        "done": {
+          "d-water": 1793694601505,
+          "d-phone-free": 1793694601537
+        },
+        "note": ""
+      }
+    ],
+    "habits": [
+      {
+        "id": "d-deep-work",
+        "name": "Deep-work block on content (90 min)",
+        "group": "daytime",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 20,
+        "order": 5,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "deep-work",
+        "projectId": null
+      },
+      {
+        "id": "d-fun-phone",
+        "name": "Fun-phone window ended before bed",
+        "group": "evening",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 15,
+        "order": 11,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "fun-phone",
+        "projectId": null
+      },
+      {
+        "id": "d-gym",
+        "name": "Gym by 10am",
+        "group": "morning",
+        "schedule": {
+          "type": "days",
+          "days": [
+            1,
+            3,
+            5
+          ]
+        },
+        "points": 20,
+        "order": 4,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": true,
+        "lightsOut": false,
+        "tip": "gym",
+        "projectId": null
+      },
+      {
+        "id": "d-learn",
+        "name": "Learn a new skill (15+ min)",
+        "group": "daytime",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 8,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "learn",
+        "projectId": null
+      },
+      {
+        "id": "d-lights-out",
+        "name": "Lights out by target time",
+        "group": "evening",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 15,
+        "order": 12,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": true,
+        "tip": "lights-out",
+        "projectId": null
+      },
+      {
+        "id": "d-phone-free",
+        "name": "Phone-free until first real task is done",
+        "group": "morning",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 15,
+        "order": 3,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "phone-free",
+        "projectId": null
+      },
+      {
+        "id": "d-savour",
+        "name": "Savour something for 20 min",
+        "group": "daytime",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 9,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "savour",
+        "projectId": null
+      },
+      {
+        "id": "d-sleep",
+        "name": "Slept 7–8 hours",
+        "group": "morning",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 1,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "sleep",
+        "projectId": null
+      },
+      {
+        "id": "d-social",
+        "name": "Socialised today (call, message or meet)",
+        "group": "evening",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 13,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "social",
+        "projectId": null
+      },
+      {
+        "id": "d-squats",
+        "name": "Daily squats",
+        "group": "daytime",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 6,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "squats",
+        "projectId": null
+      },
+      {
+        "id": "d-stillness",
+        "name": "10 min stillness",
+        "group": "daytime",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 10,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "stillness",
+        "projectId": null
+      },
+      {
+        "id": "d-strength",
+        "name": "Strength training",
+        "group": "daytime",
+        "schedule": {
+          "type": "weekly",
+          "target": 2
+        },
+        "points": 20,
+        "order": 14,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "strength",
+        "projectId": null
+      },
+      {
+        "id": "d-sunlight",
+        "name": "Morning sunlight",
+        "group": "morning",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 2,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "sunlight",
+        "projectId": null
+      },
+      {
+        "id": "d-vitamin-d",
+        "name": "Vitamin D",
+        "group": "daytime",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 5,
+        "order": 7,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "vitamin-d",
+        "projectId": null
+      },
+      {
+        "id": "d-water",
+        "name": "Glass of water on waking",
+        "group": "morning",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 0,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": "water",
+        "projectId": null
+      },
+      {
+        "id": "h-a5dcb6a5-cd2e-44c2-a72a-c12cb632b1a5",
+        "name": "10-min desk tidy",
+        "group": "evening",
+        "schedule": {
+          "type": "daily"
+        },
+        "points": 10,
+        "order": 14,
+        "createdDay": "2026-11-02",
+        "archivedDay": null,
+        "windowCountdown": false,
+        "lightsOut": false,
+        "tip": null,
+        "projectId": "p-c862f4bd-ed80-4f1d-923b-691b6fa19e22"
+      }
+    ],
+    "kv": [
+      {
+        "key": "meta",
+        "value": {
+          "initialized": true,
+          "installedAt": 1793606400078,
+          "firstDay": "2026-11-02",
+          "lastExportAt": null,
+          "exportCount": 0,
+          "badges": {
+            "first-step": "2026-11-02",
+            "finisher": "2026-11-02"
+          },
+          "backupSnoozedDay": null,
+          "installHintDismissed": false,
+          "welcomed": true
+        }
+      },
+      {
+        "key": "settings",
+        "value": {
+          "dayStart": 240,
+          "windowEnd": 600,
+          "lightsOut": 1350,
+          "weekStartsOn": 1,
+          "morningWinBonus": 25,
+          "haptics": true
+        }
+      }
+    ],
+    "projects": [
+      {
+        "id": "p-05f9fd03-6ef3-4614-b994-e995845d526e",
+        "name": "Write the newsletter",
+        "steps": [],
+        "maintenance": null,
+        "createdAt": 1793606406513,
+        "completedDay": null,
+        "habitId": null,
+        "order": 1
+      },
+      {
+        "id": "p-6f4776e7-8be4-4b88-befb-6ee22b1b808a",
+        "name": "Learn the guitar riff",
+        "steps": [],
+        "maintenance": null,
+        "createdAt": 1793606409429,
+        "completedDay": null,
+        "habitId": null,
+        "order": 3
+      },
+      {
+        "id": "p-c862f4bd-ed80-4f1d-923b-691b6fa19e22",
+        "name": "Office reset",
+        "steps": [
+          {
+            "id": "s-acd9e7f1-d2a9-4b3f-b04d-ccb28fb18ccd",
+            "text": "Clear everything off the desk",
+            "done": true
+          },
+          {
+            "id": "s-d2f9ab9f-0322-47cf-8f00-65bb7b0a7b9a",
+            "text": "Bin, file or scan loose papers",
+            "done": true
+          },
+          {
+            "id": "s-d9e83c44-0fd5-4fc8-ac85-d21a4c30373e",
+            "text": "Sort cables and chargers",
+            "done": true
+          },
+          {
+            "id": "s-cdc4bc86-3bb4-44ce-971b-d8722e381461",
+            "text": "Wipe down every surface",
+            "done": true
+          },
+          {
+            "id": "s-c49e4800-718b-479a-9d8d-22bcafff8903",
+            "text": "Give daily items a home",
+            "done": true
+          }
+        ],
+        "maintenance": {
+          "name": "10-min desk tidy",
+          "group": "evening",
+          "schedule": {
+            "type": "daily"
+          },
+          "points": 10
+        },
+        "createdAt": 1793606404413,
+        "completedDay": "2026-11-02",
+        "habitId": "h-a5dcb6a5-cd2e-44c2-a72a-c12cb632b1a5",
+        "order": 0
+      },
+      {
+        "id": "p-d14bbe6e-a485-471c-ac36-6e5cfb90f1e5",
+        "name": "Garden shed",
+        "steps": [],
+        "maintenance": null,
+        "createdAt": 1793606407979,
+        "completedDay": null,
+        "habitId": null,
+        "order": 2
+      },
+      {
+        "id": "p-ea2d5af2-43f2-42e7-ae9a-9e985443d4fb",
+        "name": "Tax return",
+        "steps": [],
+        "maintenance": null,
+        "createdAt": 1793606410895,
+        "completedDay": null,
+        "habitId": null,
+        "order": 4
+      }
+    ]
+  }
+}
