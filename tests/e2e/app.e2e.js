@@ -782,7 +782,9 @@ describe('Begin, focus and foundations', () => {
       location.hash = '#/begin';
     });
     await page.getByRole('button', { name: 'Fired up' }).click();
-    const choices = await page.locator('.flow-choice .flow-choice-label').allTextContents();
+    await page.getByRole('heading', { name: 'What’s your one main thing today?' }).waitFor();
+    // The previous step lingers briefly while it fades out, so read only the current one.
+    const choices = await page.locator('.flow-step:not(.leaving) .flow-choice-label').allTextContents();
     assert.deepEqual(choices, ['Album demo', 'Spanish course', 'Website refresh', 'Something else']);
   });
 
@@ -933,6 +935,8 @@ describe('Begin, focus and foundations', () => {
     for (const key of ['journal', 'sessions', 'cards', 'inbox']) assert.deepEqual(data[key], [], key);
 
     // The news shows once, and the ritual doesn't pop up later the same day.
+    await goTab(page, 'Today');
+    await page.locator('.view-today').waitFor();
     await reload(page, { ritual: 'keep' });
     await page.locator('.view-today').waitFor();
     assert.equal(await page.locator('.dialog').count(), 0);
